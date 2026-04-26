@@ -1,0 +1,120 @@
+{
+  "name": "zigshape-vscode",
+  "displayName": "ZigShape",
+  "description": "Generate idiomatic Zig structs from JSON, YAML, TOML, and XML — with first-class serde.zig support.",
+  "version": "0.4.0",
+  "private": true,
+  "publisher": "zigshape",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Snippets"
+  ],
+  "keywords": [
+    "zig",
+    "serde",
+    "json",
+    "yaml",
+    "toml",
+    "xml",
+    "code generation"
+  ],
+  "main": "./out/extension.cjs",
+  "activationEvents": [
+    "onLanguage:json",
+    "onLanguage:jsonc",
+    "onLanguage:yaml",
+    "onLanguage:toml",
+    "onLanguage:xml"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "zigshape.pasteAsZig",
+        "title": "ZigShape: Paste Clipboard as Zig Struct"
+      },
+      {
+        "command": "zigshape.generateFromCurrentFile",
+        "title": "ZigShape: Generate Zig Struct from Current File"
+      },
+      {
+        "command": "zigshape.updateFromSamples",
+        "title": "ZigShape: Generate Zig Struct from Multiple Files"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "zigshape.generateFromCurrentFile",
+          "when": "resourceLangId == json || resourceLangId == jsonc || resourceLangId == yaml || resourceLangId == toml || resourceLangId == xml",
+          "group": "zigshape"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "zigshape.generateFromCurrentFile",
+          "when": "resourceLangId == json || resourceLangId == jsonc || resourceLangId == yaml || resourceLangId == toml || resourceLangId == xml",
+          "group": "zigshape"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ZigShape",
+      "properties": {
+        "zigshape.target": {
+          "type": "string",
+          "enum": ["plain", "serde-zig"],
+          "default": "plain",
+          "description": "Codegen target. plain emits std.json-compatible structs; serde-zig adds rename/alias/xml decoration."
+        },
+        "zigshape.preset": {
+          "type": "string",
+          "enum": ["api", "strict", "loose"],
+          "default": "api",
+          "description": "Inference preset. api → smallest int widths + auto enums; strict → conservative u64 + observed defaults; loose → wide u64."
+        },
+        "zigshape.rootName": {
+          "type": "string",
+          "default": "Root",
+          "description": "Struct name for the root type."
+        },
+        "zigshape.intStrategy": {
+          "type": "string",
+          "enum": ["smallest", "u64", "i64"],
+          "default": "smallest",
+          "description": "Override the preset's integer width strategy."
+        },
+        "zigshape.aliases": {
+          "type": "string",
+          "enum": ["auto", "off"],
+          "default": "auto",
+          "description": "Cross-sample alias detection."
+        },
+        "zigshape.denyUnknownFields": {
+          "type": "boolean",
+          "default": false,
+          "description": "Emit serde.zig .deny_unknown_fields = true on every struct (serde-zig target only)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "package": "vsce package --no-dependencies --out zigshape-vscode-0.4.0.vsix",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zigshape/core": "workspace:*",
+    "@zigshape/serde-zig": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}

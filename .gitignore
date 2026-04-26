@@ -6,6 +6,8 @@ node_modules/
 *.tsbuildinfo
 dist/
 build/
+out/
+*.vsix
 .svelte-kit/
 lint-comm
 .DS_Store

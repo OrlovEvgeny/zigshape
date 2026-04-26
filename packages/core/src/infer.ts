@@ -186,6 +186,8 @@ function inferObject(
     });
   }
 
+  if (opts.aliases !== "off") inferAliases(path, fields, o, diag);
+
   if (
     fields.size >= opts.mapMinKeys &&
     looksDynamic(o) &&
@@ -201,6 +203,79 @@ function inferObject(
   }
 
   return { kind: "object", path, fields };
+}
+
+/** Greedy alias detection.  For sibling optional fields with structurally
+ *  equal shapes that never co-occur in the same sample, fold them into one
+ *  canonical field with `aliases` set.  The canonical is the field with the
+ *  highest observed count (ties broken by source-order, which `Map` preserves).
+ *
+ *  Uses `o.childKeyBySample` populated by `observe`; if absent (e.g. older
+ *  observation maps), the pass is a no-op. */
+function inferAliases(
+  parentPath: string,
+  fields: Map<string, FieldShape>,
+  o: Observation,
+  diag: DiagnosticBag,
+): void {
+  const presence = o.childKeyBySample;
+  if (!presence) return;
+  if (fields.size < 2) return;
+
+  // Group optional candidates into shape-equivalence classes.  Skip XML-tagged
+  // fields — attribute / text identity is positional and shouldn't merge.
+  const classes: string[][] = [];
+  for (const [key, fs] of fields) {
+    if (!fs.optional) continue;
+    if (fs.xml) continue;
+    let placed = false;
+    for (const cls of classes) {
+      const anchorShape = fields.get(cls[0]!)!.shape;
+      if (shapesEqual(anchorShape, fs.shape)) {
+        cls.push(key);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) classes.push([key]);
+  }
+
+  for (const cls of classes) {
+    if (cls.length < 2) continue;
+    // Sort by observed count desc, then by original-key order (already
+    // preserved in `cls` as we walked `fields` in insertion order, so a stable
+    // sort gets us tie-break by source order).
+    cls.sort((a, b) => fields.get(b)!.observedCount - fields.get(a)!.observedCount);
+    const canonical = cls[0]!;
+    const canonField = fields.get(canonical)!;
+    const accum = new Set<number>(presence.get(canonical) ?? []);
+    const merged: string[] = [];
+    for (let i = 1; i < cls.length; i++) {
+      const k = cls[i]!;
+      const p = presence.get(k);
+      if (!p) continue;
+      let overlap = false;
+      for (const s of p) if (accum.has(s)) { overlap = true; break; }
+      if (overlap) continue;
+      merged.push(k);
+      for (const s of p) accum.add(s);
+    }
+    if (merged.length === 0) continue;
+
+    canonField.aliases = merged;
+    canonField.observedCount = accum.size;
+    if (accum.size === o.total) {
+      canonField.optional = false;
+      canonField.optionalReason = undefined;
+    }
+    for (const k of merged) fields.delete(k);
+
+    diag.warn(
+      "infer.alias_candidate",
+      `Object at ${parentPath} treats '${canonical}' as canonical with aliases [${merged.join(", ")}] (mutually exclusive across samples)`,
+      { path: canonField.path },
+    );
+  }
 }
 
 function inferUnion(

@@ -25,6 +25,10 @@ export type ZigField = {
    *  text-node TODO comment in the serde decorator.  Plain target ignores
    *  it. */
   xml?: "attribute" | "text";
+  /** Wire-format names that should also deserialize into this field, set by
+   *  alias detection.  Drives `.alias` in the serde decorator; plain target
+   *  ignores. */
+  aliases?: string[];
 };
 
 export type StructDecl = {
@@ -313,6 +317,7 @@ function buildField(
     parentTotal: fieldShape.parentTotal,
     optionalReason: fieldShape.optionalReason,
     xml: fieldShape.xml,
+    aliases: fieldShape.aliases,
   };
 }
 

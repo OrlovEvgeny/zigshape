@@ -47,6 +47,7 @@ export {
   type IntStrategy,
   type EnumStrategy,
   type UnionStrategy,
+  type AliasStrategy,
   DEFAULT_OPTIONS,
   withDefaults,
 } from "./options";

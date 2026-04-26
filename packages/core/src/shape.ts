@@ -48,6 +48,11 @@ export type FieldShape = {
    *  emission in the serde decorator and the text-node TODO comment.
    *  Undefined for non-XML inputs. */
   xml?: "attribute" | "text";
+  /** Wire-format names that should also deserialize into this field.  Set by
+   *  alias detection when sibling fields with identical shapes never co-occur
+   *  in the same sample.  Drives `.alias = .{ ... }` in the serde decorator;
+   *  the plain target ignores it. */
+  aliases?: string[];
 };
 
 export function shapesEqual(a: Shape, b: Shape): boolean {

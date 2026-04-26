@@ -37,6 +37,14 @@ export type Observation = {
   // discriminator value.  Capped to bound memory on huge inputs.
   objectItems?: ZValue[];
   objectItemsOverflowed?: boolean;
+  // Per-child set of sample indices the key was seen in.  Used by alias
+  // detection: two siblings with identical shapes that never co-occur in the
+  // same sample are alias candidates for the same logical field.
+  // Keyed off `value.src.sample` — adequate for the common case (top-level or
+  // once-per-sample nested objects); a parent observed multiple times within
+  // one sample (e.g. array of objects) shares a sample index and so its
+  // children correctly fail the mutual-exclusion check.
+  childKeyBySample?: Map<string, Set<number>>;
 };
 
 export const STRING_SAMPLE_HARD_CAP = 64;
@@ -131,6 +139,13 @@ function observe(value: ZValue, path: string, map: ObservationMap): void {
           const prev = o.childKeyXml.get(key);
           if (prev !== "attribute") o.childKeyXml.set(key, field.xml.kind);
         }
+        o.childKeyBySample ??= new Map();
+        let presence = o.childKeyBySample.get(key);
+        if (!presence) {
+          presence = new Set();
+          o.childKeyBySample.set(key, presence);
+        }
+        presence.add(field.value.src.sample);
         observe(field.value, childPath(path, key), map);
       }
       break;

@@ -2,6 +2,7 @@
 import {
   generateZig,
   runPipeline,
+  type AliasStrategy,
   type EnumStrategy,
   type Format,
   type GenerateOptions,
@@ -22,6 +23,8 @@ type Args = {
   intStrategy: IntStrategy;
   enums: EnumStrategy;
   unions: UnionStrategy;
+  aliases: AliasStrategy;
+  denyUnknownFields: boolean;
   defaultsFromSamples: boolean;
   zigFmt: boolean;
   out: string | null;
@@ -49,6 +52,8 @@ Inference options:
   --int smallest|u64|i64         Integer width strategy. Default: smallest.
   --enums auto|off|always        Enum suggestion. Default: auto.
   --unions off|tagged            Tagged-union inference. Default: off.
+  --aliases auto|off             Cross-sample alias detection. Default: auto.
+  --deny-unknown-fields          Emit serde .deny_unknown_fields = true.
   --defaults-from-samples        Emit observed scalar values as Zig defaults.
 
 Other:
@@ -68,6 +73,8 @@ function parseArgs(argv: readonly string[]): Args {
     intStrategy: "smallest",
     enums: "auto",
     unions: "off",
+    aliases: "auto",
+    denyUnknownFields: false,
     defaultsFromSamples: false,
     zigFmt: false,
     out: null,
@@ -125,6 +132,17 @@ function parseArgs(argv: readonly string[]): Args {
         args.unions = v;
         break;
       }
+      case "--aliases": {
+        const v = next() as AliasStrategy | undefined;
+        if (v !== "auto" && v !== "off") {
+          throw new Error(`--aliases must be auto|off (got '${v}')`);
+        }
+        args.aliases = v;
+        break;
+      }
+      case "--deny-unknown-fields":
+        args.denyUnknownFields = true;
+        break;
       case "--defaults-from-samples":
         args.defaultsFromSamples = true;
         break;
@@ -182,6 +200,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     intStrategy: args.intStrategy,
     enums: args.enums,
     unions: args.unions,
+    aliases: args.aliases,
     defaultsFromSamples: args.defaultsFromSamples,
   };
 
@@ -210,7 +229,10 @@ export async function run(argv: readonly string[]): Promise<number> {
     return 1;
   }
 
-  const opts: GenerateOptions = args.target === "serde-zig" ? serdeDecorator(normalized) : {};
+  const opts: GenerateOptions =
+    args.target === "serde-zig"
+      ? serdeDecorator(normalized, { denyUnknownFields: args.denyUnknownFields })
+      : {};
   let code = generateZig(normalized, opts);
 
   if (args.zigFmt) {

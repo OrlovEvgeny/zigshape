@@ -1,7 +1,8 @@
+export type ZigIntWidth = "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64";
+
 export type ZigType =
   | { kind: "bool" }
-  | { kind: "u64" }
-  | { kind: "i64" }
+  | { kind: "int"; width: ZigIntWidth }
   | { kind: "f64" }
   | { kind: "string" }
   | { kind: "slice"; element: ZigType }
@@ -14,10 +15,8 @@ export function renderZigType(t: ZigType): string {
   switch (t.kind) {
     case "bool":
       return "bool";
-    case "u64":
-      return "u64";
-    case "i64":
-      return "i64";
+    case "int":
+      return t.width;
     case "f64":
       return "f64";
     case "string":
@@ -33,4 +32,20 @@ export function renderZigType(t: ZigType): string {
     case "optional":
       return "?" + renderZigType(t.inner);
   }
+}
+
+export function pickIntWidth(min: bigint, max: bigint, strategy: "smallest" | "u64" | "i64"): ZigIntWidth {
+  if (strategy === "i64") return "i64";
+  if (strategy === "u64") return min < 0n ? "i64" : "u64";
+  // smallest
+  if (min >= 0n) {
+    if (max <= 0xffn) return "u8";
+    if (max <= 0xffffn) return "u16";
+    if (max <= 0xffff_ffffn) return "u32";
+    return "u64";
+  }
+  if (min >= -0x80n && max <= 0x7fn) return "i8";
+  if (min >= -0x8000n && max <= 0x7fffn) return "i16";
+  if (min >= -0x8000_0000n && max <= 0x7fff_ffffn) return "i32";
+  return "i64";
 }

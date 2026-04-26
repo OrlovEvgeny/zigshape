@@ -1,1 +1,1 @@
-pub const Count = u64;
+pub const Count = u8;

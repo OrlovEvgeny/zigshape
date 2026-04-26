@@ -1,17 +1,22 @@
 <script lang="ts">
-  import Editor, { type HighlightRange } from "$lib/Editor.svelte";
+  import Editor, { type EditorLanguage, type HighlightRange } from "$lib/Editor.svelte";
   import Inspector from "$lib/Inspector.svelte";
   import SampleTabs from "$lib/SampleTabs.svelte";
   import Toolbar from "$lib/Toolbar.svelte";
   import Warnings from "$lib/Warnings.svelte";
   import { EXAMPLES, type Example } from "$lib/examples";
+  import { DEFAULT_PRESET, PRESETS, type PresetId } from "$lib/presets";
   import {
+    detectFormat,
     generateZig,
     runPipeline,
+    type Decl,
     type Diagnostic,
-    type StructDecl,
+    type Format,
   } from "@zigshape/core";
   import { serdeDecorator } from "@zigshape/serde-zig";
+
+  type FormatArg = "auto" | Format;
 
   const initial = EXAMPLES[0]!;
 
@@ -19,19 +24,48 @@
   let activeIndex = $state(0);
   let rootName = $state(initial.rootName);
   let target = $state<"plain" | "serde-zig">(initial.target);
+  let format = $state<FormatArg>("auto");
+  let presetId = $state<PresetId>(DEFAULT_PRESET);
   let inputHighlight = $state<HighlightRange | null>(null);
+
+  const detectedFormat = $derived.by(() => {
+    if (format !== "auto") return null;
+    const sample = samples[activeIndex] ?? "";
+    if (!sample.trim()) return null;
+    return detectFormat(sample).format;
+  });
+
+  const editorLanguage: EditorLanguage = $derived(
+    format === "json" || format === "yaml"
+      ? format
+      : format === "auto" && detectedFormat === "json"
+        ? "json"
+        : format === "auto" && detectedFormat === "yaml"
+          ? "yaml"
+          : "plain",
+  );
+
+  const presetOptions = $derived(
+    PRESETS.find((p) => p.id === presetId)?.options ?? {},
+  );
 
   const generated = $derived.by(() => {
     const nonEmpty = samples.filter((s) => s.trim().length > 0);
     if (nonEmpty.length === 0) {
-      return { code: "", warnings: [] as Diagnostic[], decls: [] as StructDecl[] };
+      return { code: "", warnings: [] as Diagnostic[], decls: [] as Decl[] };
     }
-    const { normalized, warnings } = runPipeline({ samples: nonEmpty, rootName });
-    if (!normalized) return { code: "", warnings, decls: [] as StructDecl[] };
+    const { normalized, warnings } = runPipeline({
+      samples: nonEmpty,
+      rootName,
+      inferOptions: { ...presetOptions, format },
+    });
+    if (!normalized) return { code: "", warnings, decls: [] as Decl[] };
     const opts = target === "serde-zig" ? serdeDecorator(normalized) : {};
     const code = generateZig(normalized, opts);
     return { code, warnings, decls: normalized.decls };
   });
+
+  const displayCode = $derived(generated.code);
 
   function loadExample(e: Example) {
     samples = [...e.samples];
@@ -52,13 +86,15 @@
   }
 
   async function copyZig() {
-    if (!generated.code) return;
-    try { await navigator.clipboard.writeText(generated.code); } catch { /* ignore */ }
+    const code = displayCode;
+    if (!code) return;
+    try { await navigator.clipboard.writeText(code); } catch { /* ignore */ }
   }
 
   function downloadZig() {
-    if (!generated.code) return;
-    const blob = new Blob([generated.code], { type: "text/plain;charset=utf-8" });
+    const code = displayCode;
+    if (!code) return;
+    const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -86,22 +122,21 @@
 
   function jumpToPath(path: string) {
     const decl = generated.decls.find(
-      (d) => d.path === path || d.fields.some((f) => f.path === path),
+      (d) =>
+        d.path === path ||
+        (d.kind === "struct" && d.fields.some((f) => f.path === path)),
     );
     if (!decl) return;
-    const f = decl.fields.find((field) => field.path === path);
     const src = findSrc(path);
     if (!src) return;
     if (src.sample !== activeIndex && src.sample < samples.length) {
       activeIndex = src.sample;
     }
     inputHighlight = { from: src.offset, length: src.length, nonce: Date.now() };
-    void f;
   }
 
-  // Best-effort: find a source range in the active sample by walking the JSON
-  // along the path.  Only handles `$.foo.bar[*].baz` and similar paths emitted
-  // by the observe stage; falls back to no highlight when traversal fails.
+  // Best-effort: locate a JSON key span in the active sample.  Adequate for the
+  // inspector demo; precise per-format mapping is roadmap.
   function findSrc(path: string): { sample: number; offset: number; length: number } | null {
     const sample = samples[activeIndex] ?? "";
     if (!sample) return null;
@@ -110,50 +145,33 @@
       .replace(/^\$\.?/, "")
       .split(/\.(?![^\[]*\])|(?=\[)/)
       .filter(Boolean);
-    return findInJson(sample, activeIndex, segments);
-  }
-
-  function findInJson(
-    json: string,
-    sample: number,
-    segments: string[],
-  ): { sample: number; offset: number; length: number } | null {
-    try {
-      let parsed: unknown;
-      try { parsed = JSON.parse(json); } catch { return null; }
-      let cursor = 0;
-      let lastRange: { offset: number; length: number } | null = null;
-      void parsed;
-      // For v0.1, try a naive substring search for the leaf key name within the
-      // input.  Good enough for the inspector demo; precise mapping deferred.
-      const leaf = segments[segments.length - 1];
-      if (!leaf || leaf.startsWith("[")) {
-        return { sample, offset: 0, length: Math.min(json.length, 1) };
-      }
-      const needle = `"${leaf}"`;
-      const idx = json.indexOf(needle, cursor);
-      if (idx < 0) return null;
-      lastRange = { offset: idx, length: needle.length };
-      return { sample, offset: lastRange.offset, length: lastRange.length };
-    } catch {
-      return null;
+    const leaf = segments[segments.length - 1];
+    if (!leaf || leaf.startsWith("[")) {
+      return { sample: activeIndex, offset: 0, length: Math.min(sample.length, 1) };
     }
+    const needle = `"${leaf}"`;
+    const idx = sample.indexOf(needle);
+    if (idx < 0) return null;
+    return { sample: activeIndex, offset: idx, length: needle.length };
   }
 </script>
 
 <main>
   <header>
     <h1>zigshape</h1>
-    <p class="tagline">Generate idiomatic Zig structs from JSON. Built for serde.zig.</p>
+    <p class="tagline">Generate idiomatic Zig structs from JSON, YAML and TOML. Built for serde.zig.</p>
   </header>
 
   <Toolbar
     bind:rootName
     bind:target
+    bind:format
+    bind:presetId
+    detectedFormat={detectedFormat ?? null}
     onLoadExample={loadExample}
     onCopy={copyZig}
     onDownload={downloadZig}
-    canCopy={!!generated.code}
+    canCopy={!!displayCode}
   />
 
   <section class="panes">
@@ -165,11 +183,11 @@
         onAdd={addSample}
         onRemove={removeSample}
       />
-      <Editor bind:value={activeValue} language="json" highlight={inputHighlight} />
+      <Editor bind:value={activeValue} language={editorLanguage} highlight={inputHighlight} />
     </div>
     <div class="pane">
       <h2>Zig</h2>
-      <Editor value={generated.code || "// (waiting for valid JSON)"} language="plain" readonly />
+      <Editor value={displayCode || "// (waiting for valid input)"} language="plain" readonly />
     </div>
   </section>
 

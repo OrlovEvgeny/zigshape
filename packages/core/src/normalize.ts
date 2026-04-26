@@ -1,6 +1,6 @@
-import type { FieldShape, Shape } from "./shape";
+import type { FieldShape, Shape, UnionVariant } from "./shape";
 import { sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
-import type { ZigType } from "./zig/types";
+import { pickIntWidth, type ZigType } from "./zig/types";
 
 export type ZigField = {
   /** Identifier as it appears in Zig source (may be `@"…"`). */
@@ -22,6 +22,7 @@ export type ZigField = {
 };
 
 export type StructDecl = {
+  kind: "struct";
   name: string;
   path: string;
   fields: ZigField[];
@@ -29,23 +30,68 @@ export type StructDecl = {
   fromArrayElement?: boolean;
 };
 
+export type EnumDecl = {
+  kind: "enum";
+  name: string;
+  path: string;
+  variants: EnumDeclVariant[];
+};
+
+export type EnumDeclVariant = {
+  /** Identifier as it appears in Zig source (may be `@"…"`). */
+  zigName: string;
+  escaped: boolean;
+  /** Original wire value. */
+  rawValue: string;
+  /** True when zigName !== rawValue (rename needed for serde). */
+  renamed: boolean;
+  observedCount: number;
+};
+
+export type Decl = StructDecl | EnumDecl | UnionDecl;
+
+export type UnionDecl = {
+  kind: "union";
+  name: string;
+  path: string;
+  tagField: string;
+  variants: UnionDeclVariant[];
+};
+
+export type UnionDeclVariant = {
+  /** Snake-case Zig field name (sanitized from tagValue). */
+  zigName: string;
+  escaped: boolean;
+  /** Original wire tag value. */
+  tagValue: string;
+  /** True when zigName !== tagValue (rename needed for serde). */
+  renamed: boolean;
+  /** The variant's payload type — usually a ref to a generated struct. */
+  payload: ZigType;
+  observedCount: number;
+};
+
 export type NormalizeResult = {
   rootName: string;
   /** The type expression for the root. Equals `ref` to rootName when root is an object. */
   rootType: ZigType;
-  /** Top-level struct declarations in DFS order (root first when applicable). */
-  decls: StructDecl[];
+  /** Top-level declarations in DFS order (root first when applicable). */
+  decls: Decl[];
   needsStd: boolean;
 };
+
+export type IntStrategy = "smallest" | "u64" | "i64";
 
 export type NormalizeOptions = {
   rootName: string;
+  intStrategy?: IntStrategy;
 };
 
 type NormalizeState = {
-  decls: StructDecl[];
+  decls: Decl[];
   usedTypeNames: Set<string>;
   needsStd: boolean;
+  intStrategy: IntStrategy;
 };
 
 export function normalize(root: Shape, options: NormalizeOptions): NormalizeResult {
@@ -53,7 +99,14 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     decls: [],
     usedTypeNames: new Set(),
     needsStd: false,
+    intStrategy: options.intStrategy ?? "smallest",
   };
+  // When root is non-object, the generator emits a top-level alias
+  // `pub const <rootName> = <rootType>;`.  Reserve the name now so any inner
+  // declaration walked next gets uniqified instead of colliding.
+  if (root.kind !== "object") {
+    state.usedTypeNames.add(options.rootName);
+  }
   const rootType = walkShape(root, options.rootName, state, /*fromArrayElement*/ false);
   return {
     rootName: options.rootName,
@@ -70,7 +123,7 @@ function walkShape(shape: Shape, hint: string, state: NormalizeState, fromArrayE
     case "string":
       return { kind: "string" };
     case "int":
-      return { kind: shape.signed ? "i64" : "u64" };
+      return { kind: "int", width: pickIntWidth(shape.min, shape.max, state.intStrategy) };
     case "float":
       return { kind: "f64" };
     case "null":
@@ -89,7 +142,84 @@ function walkShape(shape: Shape, hint: string, state: NormalizeState, fromArrayE
     }
     case "object":
       return walkObject(shape, hint, state, fromArrayElement);
+    case "enum":
+      return walkEnum(shape, hint, state);
+    case "union":
+      return walkUnion(shape, hint, state);
   }
+}
+
+function walkUnion(
+  shape: Extract<Shape, { kind: "union" }>,
+  hint: string,
+  state: NormalizeState,
+): ZigType {
+  const baseName = sanitizeStructName(hint) || "Auto";
+  const name = uniqify(state.usedTypeNames, baseName);
+  state.usedTypeNames.add(name);
+
+  const decl: UnionDecl = {
+    kind: "union",
+    name,
+    path: shape.path,
+    tagField: shape.tagField,
+    variants: [],
+  };
+  state.decls.push(decl);
+
+  const seenVariantNames = new Set<string>();
+  for (const v of shape.variants) {
+    const sanitizedField = sanitizeFieldName(v.tagValue);
+    let zigName = sanitizedField.text;
+    let i = 2;
+    while (seenVariantNames.has(zigName)) zigName = `${sanitizedField.text}_${i++}`;
+    seenVariantNames.add(zigName);
+    // Variant payload becomes its own struct (named after the variant).
+    const payloadHint = v.variantName;
+    const payload = walkShape(v.shape, payloadHint, state, /*fromArrayElement*/ true);
+    decl.variants.push({
+      zigName,
+      escaped: sanitizedField.escaped,
+      tagValue: v.tagValue,
+      renamed: zigName !== v.tagValue,
+      payload,
+      observedCount: v.observedCount,
+    });
+  }
+  return { kind: "ref", structName: name };
+}
+
+function walkEnum(
+  shape: Extract<Shape, { kind: "enum" }>,
+  hint: string,
+  state: NormalizeState,
+): ZigType {
+  const baseName = sanitizeStructName(hint) || "Auto";
+  const name = uniqify(state.usedTypeNames, baseName);
+  state.usedTypeNames.add(name);
+
+  // Resolve identifier collisions across variants AFTER initial sanitization.
+  const seen = new Set<string>();
+  const decl: EnumDecl = {
+    kind: "enum",
+    name,
+    path: shape.path,
+    variants: shape.variants.map((v) => {
+      let zigName = v.zigName;
+      let i = 2;
+      while (seen.has(zigName)) zigName = `${v.zigName}_${i++}`;
+      seen.add(zigName);
+      return {
+        zigName,
+        escaped: v.escaped,
+        rawValue: v.rawValue,
+        renamed: zigName !== v.rawValue,
+        observedCount: v.observedCount,
+      };
+    }),
+  };
+  state.decls.push(decl);
+  return { kind: "ref", structName: name };
 }
 
 function walkObject(
@@ -103,6 +233,7 @@ function walkObject(
   state.usedTypeNames.add(name);
 
   const decl: StructDecl = {
+    kind: "struct",
     name,
     path: shape.path,
     fields: [],

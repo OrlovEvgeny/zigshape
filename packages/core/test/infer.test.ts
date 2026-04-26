@@ -22,10 +22,10 @@ describe("infer scalars", () => {
     expect(inferOf("true").root).toEqual({ kind: "bool" });
   });
   test("unsigned int", () => {
-    expect(inferOf("1", "2").root).toEqual({ kind: "int", signed: false });
+    expect(inferOf("1", "2").root).toEqual({ kind: "int", signed: false, min: 1n, max: 2n });
   });
   test("signed int when any negative", () => {
-    expect(inferOf("1", "-2").root).toEqual({ kind: "int", signed: true });
+    expect(inferOf("1", "-2").root).toEqual({ kind: "int", signed: true, min: -2n, max: 1n });
   });
   test("float", () => {
     expect(inferOf("3.14").root).toEqual({ kind: "float" });
@@ -59,7 +59,7 @@ describe("infer objects", () => {
     expect(o.kind).toBe("object");
     const f = o.fields.get("id")!;
     expect(f.optional).toBe(false);
-    expect(f.shape).toEqual({ kind: "int", signed: false });
+    expect(f.shape).toEqual({ kind: "int", signed: false, min: 1n, max: 1n });
   });
 
   test("optional via missing across samples", () => {

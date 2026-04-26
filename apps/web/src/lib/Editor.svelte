@@ -1,16 +1,17 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { json } from "@codemirror/lang-json";
-  import { EditorSelection, EditorState } from "@codemirror/state";
-  import { EditorView, Decoration, type DecorationSet } from "@codemirror/view";
-  import { StateEffect, StateField } from "@codemirror/state";
+  import { yaml } from "@codemirror/lang-yaml";
+  import { Compartment, EditorSelection, EditorState, StateEffect, StateField } from "@codemirror/state";
+  import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
   import { basicSetup } from "codemirror";
 
   export type HighlightRange = { from: number; length: number; nonce: number };
+  export type EditorLanguage = "json" | "yaml" | "toml" | "plain";
 
   type Props = {
     value: string;
-    language?: "json" | "plain";
+    language?: EditorLanguage;
     readonly?: boolean;
     highlight?: HighlightRange | null;
   };
@@ -25,9 +26,8 @@
   let host: HTMLDivElement;
   let view: EditorView | undefined;
   let lastInternal = "";
+  const langCompartment = new Compartment();
 
-  // Highlight extension: a state field that stores a single inline decoration
-  // span, plus an effect that updates it.
   const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
   const highlightField = StateField.define<DecorationSet>({
     create: () => Decoration.none,
@@ -55,12 +55,19 @@
     provide: (f) => EditorView.decorations.from(f),
   });
 
+  function languageExtension(lang: EditorLanguage) {
+    if (lang === "json") return json();
+    if (lang === "yaml") return yaml();
+    return [];
+  }
+
   onMount(() => {
     const extensions = [
       basicSetup,
       EditorView.lineWrapping,
       EditorState.readOnly.of(readonly),
       highlightField,
+      langCompartment.of(languageExtension(language)),
       EditorView.updateListener.of((u) => {
         if (u.docChanged && !readonly) {
           const text = u.state.doc.toString();
@@ -69,7 +76,6 @@
         }
       }),
     ];
-    if (language === "json") extensions.push(json());
 
     view = new EditorView({
       doc: value,
@@ -81,7 +87,6 @@
 
   onDestroy(() => view?.destroy());
 
-  // External value -> editor doc.
   $effect(() => {
     if (!view) return;
     if (value === lastInternal) return;
@@ -91,11 +96,16 @@
     lastInternal = value;
   });
 
-  // External highlight request -> editor scroll + decoration.
+  // Hot-swap the language extension when the prop changes.
+  $effect(() => {
+    if (!view) return;
+    view.dispatch({ effects: langCompartment.reconfigure(languageExtension(language)) });
+  });
+
   $effect(() => {
     if (!view || !highlight) return;
     const { from, length } = highlight;
-    void highlight.nonce; // re-run when nonce changes
+    void highlight.nonce;
     const docLen = view.state.doc.length;
     const safeFrom = Math.max(0, Math.min(from, docLen));
     const safeTo = Math.max(safeFrom, Math.min(from + length, docLen));

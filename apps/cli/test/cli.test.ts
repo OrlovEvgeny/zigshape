@@ -33,7 +33,7 @@ describe("cli", () => {
     );
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("pub const User = struct {");
-    expect(r.stdout).toContain("id: u64");
+    expect(r.stdout).toContain("id: u8");
     expect(r.stdout).toContain("name: []const u8");
     expect(r.stdout).not.toContain("@import(\"serde\")");
   });
@@ -101,5 +101,90 @@ describe("cli", () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("?std.json.Value");
     expect(r.stderr.toLowerCase()).toContain("only null");
+  });
+
+  test("YAML input via --format yaml", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "yaml", "--root", "Cfg"],
+      "name: hello\nport: 80\nflags:\n  - a\n  - b",
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("pub const Cfg = struct {");
+    expect(r.stdout).toContain("port: u8");
+    expect(r.stdout).toContain("flags: []const []const u8");
+  });
+
+  test("TOML input via --format toml", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "toml", "--root", "Cfg"],
+      'title = "myapp"\nport = 3000\n[database]\nhost = "localhost"',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("pub const Cfg = struct {");
+    expect(r.stdout).toContain("database: Database");
+    expect(r.stdout).toContain("pub const Database = struct {");
+  });
+
+  test("auto-detect picks JSON for braces", async () => {
+    const r = await runCli(
+      ["--stdin", "--root", "X"],
+      '{"id": 1}',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("pub const X = struct {");
+  });
+
+  test("auto-detect picks YAML for colon-block", async () => {
+    const r = await runCli(
+      ["--stdin", "--root", "Cfg"],
+      "name: hello\nport: 80",
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("pub const Cfg = struct {");
+  });
+
+  test("--int u64 reverts width to v0.1 default", async () => {
+    const r = await runCli(
+      ["--stdin", "--int", "u64", "--root", "X"],
+      '{"id": 1}',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("id: u64");
+  });
+
+  test("--unions tagged emits union(enum)", async () => {
+    const r = await runCli(
+      ["--stdin", "--unions", "tagged", "--root", "Commands", "--target", "serde-zig"],
+      '[{"type":"ping"},{"type":"execute","query":"x"},{"type":"ping"}]',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("union(enum)");
+    expect(r.stdout).toContain("tag = serde.UnionTag.internal");
+    expect(r.stdout).toContain('tag_field = "type"');
+  });
+
+  test("--enums off keeps strings even with low cardinality", async () => {
+    const r = await runCli(
+      ["--stdin", "--enums", "off", "--root", "User"],
+      '[{"status":"a"},{"status":"b"},{"status":"a"},{"status":"b"},{"status":"a"}]',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).not.toContain("enum {");
+    expect(r.stdout).toContain("status: []const u8");
+  });
+
+  test("--zig-fmt produces idempotent output", async () => {
+    const r = await runCli(
+      ["--stdin", "--zig-fmt", "--root", "User"],
+      '{"id": 1, "name": "A"}',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("pub const User = struct {");
+  });
+
+  test("invalid --format rejected", async () => {
+    const r = await runCli(["--stdin", "--format", "xml"], "{}");
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("--format");
   });
 });

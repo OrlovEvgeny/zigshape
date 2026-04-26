@@ -39,11 +39,16 @@ describe("observeSamples", () => {
     expect(x.countByKind.get("null")).toBe(1);
   });
 
-  test("int sign tracked", () => {
+  test("int min/max tracked across observations", () => {
     const obs = observeSamples(parseAll("[1, 2, 3]"));
-    expect(obs.get("$[*]")!.intSigned).toBe(false);
-    const obs2 = observeSamples(parseAll("[1, -2]"));
-    expect(obs2.get("$[*]")!.intSigned).toBe(true);
+    const o = obs.get("$[*]")!;
+    expect(o.intMin).toBe(1n);
+    expect(o.intMax).toBe(3n);
+
+    const obs2 = observeSamples(parseAll("[1, -2, 5]"));
+    const o2 = obs2.get("$[*]")!;
+    expect(o2.intMin).toBe(-2n);
+    expect(o2.intMax).toBe(5n);
   });
 
   test("array length range tracked", () => {

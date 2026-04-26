@@ -1,16 +1,17 @@
 <script lang="ts">
-  import type { StructDecl, ZigField } from "@zigshape/core";
+  import type { Decl, ZigField } from "@zigshape/core";
   import { renderZigType } from "@zigshape/core";
 
   type Props = {
-    decls: StructDecl[];
+    decls: Decl[];
     onJump: (path: string) => void;
   };
 
   let { decls, onJump }: Props = $props();
 
   function reasonText(f: ZigField): string {
-    if (!f.optional) return `${f.observedCount}/${f.parentTotal} samples — required`;
+    const optional = f.defaultExpr === "null";
+    if (!optional) return `${f.observedCount}/${f.parentTotal} samples — required`;
     const ratio = `${f.observedCount}/${f.parentTotal}`;
     switch (f.optionalReason) {
       case "missing":
@@ -32,27 +33,66 @@
       {#each decls as decl (decl.name)}
         <details open>
           <summary>
+            <span class="kind">{decl.kind}</span>
             <span class="struct">{decl.name}</span>
             <span class="path">{decl.path}</span>
           </summary>
-          {#if decl.fields.length === 0}
-            <p class="empty">(no fields)</p>
+          {#if decl.kind === "struct"}
+            {#if decl.fields.length === 0}
+              <p class="empty">(no fields)</p>
+            {:else}
+              <ul>
+                {#each decl.fields as f (f.name)}
+                  <li>
+                    <button type="button" onclick={() => onJump(f.path)}>
+                      <code class="field">{f.name}</code>
+                      <span class="type">: {renderZigType(f.type)}</span>
+                      {#if f.defaultExpr !== undefined}<span class="default"> = {f.defaultExpr}</span>{/if}
+                      <span class="reason">{reasonText(f)}</span>
+                      {#if f.renamed}
+                        <span class="rename">renamed from <code>{f.originalKey}</code></span>
+                      {/if}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {:else if decl.kind === "enum"}
+            {#if decl.variants.length === 0}
+              <p class="empty">(no variants)</p>
+            {:else}
+              <ul>
+                {#each decl.variants as v (v.zigName)}
+                  <li>
+                    <button type="button" onclick={() => onJump(decl.path)}>
+                      <code class="field">{v.zigName}</code>
+                      <span class="reason">observed {v.observedCount}× — value <code>{v.rawValue}</code></span>
+                      {#if v.renamed}
+                        <span class="rename">renamed from <code>{v.rawValue}</code></span>
+                      {/if}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           {:else}
-            <ul>
-              {#each decl.fields as f (f.name)}
-                <li>
-                  <button type="button" onclick={() => onJump(f.path)}>
-                    <code class="field">{f.name}</code>
-                    <span class="type">: {renderZigType(f.type)}</span>
-                    {#if f.defaultExpr !== undefined}<span class="default"> = {f.defaultExpr}</span>{/if}
-                    <span class="reason">{reasonText(f)}</span>
-                    {#if f.renamed}
-                      <span class="rename">renamed from <code>{f.originalKey}</code></span>
-                    {/if}
-                  </button>
-                </li>
-              {/each}
-            </ul>
+            {#if decl.variants.length === 0}
+              <p class="empty">(no variants)</p>
+            {:else}
+              <ul>
+                {#each decl.variants as v (v.zigName)}
+                  <li>
+                    <button type="button" onclick={() => onJump(decl.path)}>
+                      <code class="field">{v.zigName}</code>
+                      <span class="reason">tag <code>{decl.tagField}</code> = <code>{v.tagValue}</code> · observed {v.observedCount}×</span>
+                      {#if v.renamed}
+                        <span class="rename">renamed from <code>{v.tagValue}</code></span>
+                      {/if}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
           {/if}
         </details>
       {/each}
@@ -85,6 +125,15 @@
     color: #888;
   }
   details[open] summary::before { content: "▾"; }
+  .kind {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    background: #f0f0f0;
+    padding: 0 0.35rem;
+    border-radius: 2px;
+  }
   .struct { font-weight: 600; }
   .path { color: #888; font-size: 0.75rem; font-family: ui-monospace, monospace; }
   ul { list-style: none; padding: 0; margin: 0.5rem 0 0; }
@@ -108,6 +157,7 @@
   .type { color: #555; font-size: 0.85rem; }
   .default { color: #888; font-size: 0.85rem; }
   .reason { color: #666; font-size: 0.75rem; flex: 1 1 auto; }
+  .reason code { background: #eef; padding: 0 0.25rem; border-radius: 2px; }
   .rename { font-size: 0.75rem; color: #2a6; }
   .rename code { background: #eef9f0; padding: 0 0.25rem; border-radius: 2px; }
   .empty { color: #888; font-size: 0.8rem; margin: 0.25rem 0 0; }

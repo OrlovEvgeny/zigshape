@@ -13,6 +13,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@wasm-fmt/zig_fmt": "^0.16.0",
     "@zigshape/core": "workspace:*",
     "@zigshape/serde-zig": "workspace:*"
   },

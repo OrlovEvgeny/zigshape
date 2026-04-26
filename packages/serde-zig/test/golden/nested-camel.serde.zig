@@ -1,7 +1,7 @@
 const serde = @import("serde");
 
 pub const User = struct {
-    user_id: u64,
+    user_id: u8,
     user_profile: UserProfile,
 
     pub const serde = .{

@@ -1,14 +1,15 @@
 import { DiagnosticBag, type Diagnostic } from "./diagnostics";
-import { infer, type InferOptions } from "./infer";
+import { infer } from "./infer";
 import { normalize, type NormalizeResult } from "./normalize";
 import { observeSamples } from "./observe";
-import { parseSample } from "./parse";
+import { withDefaults, type ZigshapeOptions } from "./options";
+import { detectFormat, parseSample } from "./parse";
 import type { ZValue } from "./value";
 
 export type PipelineInput = {
   samples: string[];
   rootName: string;
-  inferOptions?: Partial<InferOptions>;
+  inferOptions?: Partial<ZigshapeOptions>;
 };
 
 export type PipelineResult = {
@@ -21,11 +22,25 @@ export type PipelineResult = {
 export function runPipeline({ samples, rootName, inferOptions }: PipelineInput): PipelineResult {
   const all = new DiagnosticBag();
   const values: ZValue[] = [];
+  const options = withDefaults(inferOptions);
+  const formatOpt = options.format;
+  const detectedFormats = new Set<string>();
 
   for (let i = 0; i < samples.length; i++) {
-    const r = parseSample(samples[i] ?? "", i);
+    const sampleText = samples[i] ?? "";
+    if (formatOpt === "auto") {
+      detectedFormats.add(detectFormat(sampleText).format);
+    }
+    const r = parseSample(sampleText, i, formatOpt);
     for (const d of r.diagnostics.toArray()) all.push(d);
     if (r.value && !r.diagnostics.hasErrors()) values.push(r.value);
+  }
+
+  if (formatOpt === "auto" && detectedFormats.size > 1) {
+    all.warn(
+      "pipeline.mixed_formats",
+      `Samples appear to be in different formats (${[...detectedFormats].join(", ")}); results may be inconsistent`,
+    );
   }
 
   if (values.length === 0) {
@@ -33,9 +48,9 @@ export function runPipeline({ samples, rootName, inferOptions }: PipelineInput):
   }
 
   const observations = observeSamples(values);
-  const { root, diagnostics: inferDiag } = infer(observations, inferOptions);
+  const { root, diagnostics: inferDiag } = infer(observations, options);
   for (const d of inferDiag.toArray()) all.push(d);
 
-  const normalized = normalize(root, { rootName });
+  const normalized = normalize(root, { rootName, intStrategy: options.intStrategy });
   return { normalized, warnings: all.toArray() };
 }

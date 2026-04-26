@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { generateZig } from "../src/generate";
 import { runPipeline } from "../src/pipeline";
+import type { StructDecl } from "../src/normalize";
 
 describe("runPipeline", () => {
   test("happy path", () => {
@@ -9,7 +10,8 @@ describe("runPipeline", () => {
       rootName: "User",
     });
     expect(r.normalized).not.toBeNull();
-    expect(r.normalized!.decls[0]!.fields.find((f) => f.name === "name")!.defaultExpr).toBe("null");
+    const root = r.normalized!.decls[0] as StructDecl;
+    expect(root.fields.find((f) => f.name === "name")!.defaultExpr).toBe("null");
     const code = generateZig(r.normalized!);
     expect(code).toContain("name: ?[]const u8 = null");
   });

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseSample } from "../src/parse";
 import { observeSamples } from "../src/observe";
 import { infer } from "../src/infer";
-import { normalize } from "../src/normalize";
+import { normalize, type Decl, type StructDecl } from "../src/normalize";
 import { renderZigType } from "../src/zig/types";
 
 function norm(rootName: string, ...samples: string[]) {
@@ -12,17 +12,25 @@ function norm(rootName: string, ...samples: string[]) {
     return r.value;
   });
   const { root } = infer(observeSamples(values));
-  return normalize(root, { rootName });
+  const result = normalize(root, { rootName });
+  return {
+    ...result,
+    structAt(i: number): StructDecl {
+      const d: Decl | undefined = result.decls[i];
+      if (!d || d.kind !== "struct") throw new Error(`expected struct at index ${i}`);
+      return d;
+    },
+  };
 }
 
 describe("normalize", () => {
   test("flat struct of scalars", () => {
     const r = norm("User", '{"id": 1, "name": "Alice", "active": true}');
     expect(r.decls).toHaveLength(1);
-    expect(r.decls[0]!.name).toBe("User");
-    const fields = r.decls[0]!.fields;
+    expect(r.structAt(0).name).toBe("User");
+    const fields = r.structAt(0).fields;
     expect(fields.map((f) => `${f.name}: ${renderZigType(f.type)}`)).toEqual([
-      "id: u64",
+      "id: u8",
       "name: []const u8",
       "active: bool",
     ]);
@@ -30,14 +38,14 @@ describe("normalize", () => {
 
   test("optional adds ?T and default null", () => {
     const r = norm("User", '{"id": 1, "email": "a"}', '{"id": 2}');
-    const f = r.decls[0]!.fields.find((f) => f.name === "email")!;
+    const f = r.structAt(0).fields.find((f) => f.name === "email")!;
     expect(renderZigType(f.type)).toBe("?[]const u8");
     expect(f.defaultExpr).toBe("null");
   });
 
   test("camelCase keys snake the field name and mark renamed", () => {
     const r = norm("User", '{"userId": 1, "firstName": "A"}');
-    const fields = r.decls[0]!.fields;
+    const fields = r.structAt(0).fields;
     expect(fields.map((f) => f.name)).toEqual(["user_id", "first_name"]);
     expect(fields.every((f) => f.renamed)).toBe(true);
     expect(fields[0]!.originalKey).toBe("userId");
@@ -45,12 +53,12 @@ describe("normalize", () => {
 
   test("reserved keyword key gets _ suffix", () => {
     const r = norm("Thing", '{"type": "x", "pub": "y"}');
-    expect(r.decls[0]!.fields.map((f) => f.name)).toEqual(["type_", "pub_"]);
+    expect(r.structAt(0).fields.map((f) => f.name)).toEqual(["type_", "pub_"]);
   });
 
   test("invalid identifier key uses @\"…\"", () => {
     const r = norm("Thing", '{"2fa_enabled": true}');
-    const f = r.decls[0]!.fields[0]!;
+    const f = r.structAt(0).fields[0]!;
     expect(f.name).toBe('@"2fa_enabled"');
     expect(f.escaped).toBe(true);
   });
@@ -58,14 +66,14 @@ describe("normalize", () => {
   test("collision after sanitization gets _2 suffix", () => {
     // userId -> user_id; user-id -> user_id; both collide.
     const r = norm("X", '{"userId": 1, "user-id": 2}');
-    const names = r.decls[0]!.fields.map((f) => f.name);
+    const names = r.structAt(0).fields.map((f) => f.name);
     expect(names).toEqual(["user_id", "user_id_2"]);
   });
 
   test("nested struct gets PascalCase name from field key", () => {
     const r = norm("Root", '{"profile": {"city": "NYC"}}');
     expect(r.decls.map((d) => d.name)).toEqual(["Root", "Profile"]);
-    const profile = r.decls.find((d) => d.name === "Profile")!;
+    const profile = r.decls.find((d) => d.name === "Profile") as StructDecl;
     expect(profile.fields[0]!.name).toBe("city");
   });
 
@@ -73,7 +81,7 @@ describe("normalize", () => {
     const r = norm("Root", '{"users": [{"id": 1}]}');
     const names = r.decls.map((d) => d.name);
     expect(names).toEqual(["Root", "User"]);
-    const root = r.decls[0]!;
+    const root = r.structAt(0);
     expect(renderZigType(root.fields[0]!.type)).toBe("[]const User");
   });
 
@@ -97,32 +105,32 @@ describe("normalize", () => {
 
   test("only-null field falls back to std.json.Value", () => {
     const r = norm("X", '{"x": null}');
-    const f = r.decls[0]!.fields[0]!;
+    const f = r.structAt(0).fields[0]!;
     expect(renderZigType(f.type)).toBe("?std.json.Value");
     expect(r.needsStd).toBe(true);
   });
 
   test("heterogeneous scalar field falls back to json", () => {
     const r = norm("X", '{"x": "a"}', '{"x": 1}');
-    const f = r.decls[0]!.fields[0]!;
+    const f = r.structAt(0).fields[0]!;
     expect(renderZigType(f.type)).toBe("std.json.Value");
     expect(r.needsStd).toBe(true);
   });
 
   test("signed int when any negative", () => {
     const r = norm("X", '{"n": -1}');
-    expect(renderZigType(r.decls[0]!.fields[0]!.type)).toBe("i64");
+    expect(renderZigType(r.structAt(0).fields[0]!.type)).toBe("i8");
   });
 
   test("array of scalars", () => {
     const r = norm("X", '{"tags": ["a", "b"]}');
-    expect(renderZigType(r.decls[0]!.fields[0]!.type)).toBe("[]const []const u8");
+    expect(renderZigType(r.structAt(0).fields[0]!.type)).toBe("[]const []const u8");
   });
 
   test("non-object root: scalar", () => {
     const r = norm("Count", "42");
     expect(r.decls).toHaveLength(0);
-    expect(renderZigType(r.rootType)).toBe("u64");
+    expect(renderZigType(r.rootType)).toBe("u8");
   });
 
   test("non-object root: array of objects", () => {

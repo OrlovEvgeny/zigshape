@@ -8,7 +8,8 @@ export type Observation = {
   countByKind: Map<ValueKind, number>;
   firstSrc?: SrcRef;
   // int kind specifics
-  intSigned?: boolean;
+  intMin?: bigint;
+  intMax?: bigint;
   // array kind specifics
   arrayMinLen?: number;
   arrayMaxLen?: number;
@@ -16,7 +17,21 @@ export type Observation = {
   childKeyOrder: string[];
   childKeysSeen: Set<string>;
   childKeyHasNonIdent: boolean;
+  // string kind specifics — used for enum inference.  Capped to avoid memory
+  // blow-up on highly variable text fields; the "overflowed" flag tells infer
+  // to skip enum suggestion regardless of distinctness ratio.
+  stringSamples?: Map<string, number>;
+  stringSamplesOverflowed?: boolean;
+  stringFirstSrcByValue?: Map<string, SrcRef>;
+  // Object items observed at this path (only populated when this path is an
+  // array element).  Used by tagged-union inference, which re-groups items by
+  // discriminator value.  Capped to bound memory on huge inputs.
+  objectItems?: ZValue[];
+  objectItemsOverflowed?: boolean;
 };
+
+export const STRING_SAMPLE_HARD_CAP = 64;
+export const ARRAY_ITEM_HARD_CAP = 1000;
 
 export type ObservationMap = Map<string, Observation>;
 
@@ -52,14 +67,42 @@ function observe(value: ZValue, path: string, map: ObservationMap): void {
 
   switch (value.kind) {
     case "int":
-      if (value.value < 0n) o.intSigned = true;
-      else o.intSigned ??= false;
+      o.intMin = o.intMin === undefined ? value.value : (value.value < o.intMin ? value.value : o.intMin);
+      o.intMax = o.intMax === undefined ? value.value : (value.value > o.intMax ? value.value : o.intMax);
       break;
+    case "string": {
+      o.stringSamples ??= new Map();
+      o.stringFirstSrcByValue ??= new Map();
+      const existing = o.stringSamples.get(value.value);
+      if (existing !== undefined) {
+        o.stringSamples.set(value.value, existing + 1);
+      } else if (o.stringSamples.size >= STRING_SAMPLE_HARD_CAP) {
+        o.stringSamplesOverflowed = true;
+      } else {
+        o.stringSamples.set(value.value, 1);
+        o.stringFirstSrcByValue.set(value.value, value.src);
+      }
+      break;
+    }
     case "array": {
       const len = value.items.length;
       o.arrayMinLen = o.arrayMinLen === undefined ? len : Math.min(o.arrayMinLen, len);
       o.arrayMaxLen = o.arrayMaxLen === undefined ? len : Math.max(o.arrayMaxLen, len);
-      for (const item of value.items) observe(item, path + "[*]", map);
+      const elementPath = path + "[*]";
+      const elementObs = getOrCreate(map, elementPath);
+      for (const item of value.items) {
+        // Save object items at the element path so the union inferrer can
+        // re-walk and group by discriminator.  Bounded by ARRAY_ITEM_HARD_CAP.
+        if (item.kind === "object") {
+          if (!elementObs.objectItems) elementObs.objectItems = [];
+          if (elementObs.objectItems.length < ARRAY_ITEM_HARD_CAP) {
+            elementObs.objectItems.push(item);
+          } else {
+            elementObs.objectItemsOverflowed = true;
+          }
+        }
+        observe(item, elementPath, map);
+      }
       break;
     }
     case "object": {

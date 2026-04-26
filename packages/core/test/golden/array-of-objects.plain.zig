@@ -3,6 +3,6 @@ pub const Root = struct {
 };
 
 pub const User = struct {
-    id: u64,
+    id: u8,
     name: []const u8,
 };

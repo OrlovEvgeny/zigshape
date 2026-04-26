@@ -35,6 +35,7 @@ type Args = {
   unions: UnionStrategy;
   aliases: AliasStrategy;
   denyUnknownFields: boolean;
+  samplesFromArray: boolean;
   defaultsFromSamples: boolean;
   zigFmt: boolean;
   out: string | null;
@@ -55,8 +56,12 @@ Usage:
   zigshape --stdin   [options]
 
 Input options:
-  --format auto|json|yaml|toml|xml   Input format. Default: auto.
+  --format auto|json|ndjson|yaml|toml|xml
+                                     Input format. Default: auto.
   --stdin                            Read a single sample from stdin.
+  --samples-from-array               Treat each top-level array item as a
+                                     separate sample (NDJSON-style).
+  http(s)://… arguments are fetched at run-time before parsing.
 
 Output options:
   --root NAME                    Struct name for the root type. Default: Root.
@@ -99,6 +104,7 @@ function parseArgs(argv: readonly string[]): Args {
     unions: "off",
     aliases: "auto",
     denyUnknownFields: false,
+    samplesFromArray: false,
     defaultsFromSamples: false,
     zigFmt: false,
     out: null,
@@ -132,8 +138,15 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case "--format": {
         const f = next() as FormatArg | undefined;
-        if (f !== "auto" && f !== "json" && f !== "yaml" && f !== "toml" && f !== "xml") {
-          throw new Error(`--format must be auto|json|yaml|toml|xml (got '${f}')`);
+        if (
+          f !== "auto" &&
+          f !== "json" &&
+          f !== "ndjson" &&
+          f !== "yaml" &&
+          f !== "toml" &&
+          f !== "xml"
+        ) {
+          throw new Error(`--format must be auto|json|ndjson|yaml|toml|xml (got '${f}')`);
         }
         args.format = f;
         args.explicit.add("format");
@@ -197,6 +210,10 @@ function parseArgs(argv: readonly string[]): Args {
         args.denyUnknownFields = true;
         args.explicit.add("denyUnknownFields");
         break;
+      case "--samples-from-array":
+        args.samplesFromArray = true;
+        args.explicit.add("samplesFromArray");
+        break;
       case "--defaults-from-samples":
         args.defaultsFromSamples = true;
         args.explicit.add("defaultsFromSamples");
@@ -254,6 +271,8 @@ export async function run(argv: readonly string[]): Promise<number> {
 
   let denyUnknownFields = args.denyUnknownFields;
   let overrides: Overrides | undefined;
+  let flattenPaths: string[] | undefined;
+  let skipPaths: string[] | undefined;
   if (args.config) {
     try {
       const cfg = await loadConfig(args.config);
@@ -295,6 +314,12 @@ export async function run(argv: readonly string[]): Promise<number> {
       if (cfg.serde?.denyUnknownFields !== undefined && !args.explicit.has("denyUnknownFields")) {
         denyUnknownFields = cfg.serde.denyUnknownFields;
       }
+      if (cfg.serde?.flattenPaths && cfg.serde.flattenPaths.length > 0) {
+        flattenPaths = cfg.serde.flattenPaths;
+      }
+      if (cfg.serde?.skipPaths && cfg.serde.skipPaths.length > 0) {
+        skipPaths = cfg.serde.skipPaths;
+      }
       if (cfg.overrides && Object.keys(cfg.overrides).length > 0) {
         overrides = cfg.overrides;
       }
@@ -308,7 +333,27 @@ export async function run(argv: readonly string[]): Promise<number> {
   if (args.stdin || args.files.length === 0) {
     samples = [await Bun.stdin.text()];
   } else {
-    samples = await Promise.all(args.files.map((f) => Bun.file(f).text()));
+    try {
+      samples = await Promise.all(
+        args.files.map(async (f) => {
+          if (/^https?:\/\//i.test(f)) {
+            // Fetch http(s) URLs at runtime so users can pass an API endpoint
+            // directly: `zigshape https://api.example.com/user --root User`.
+            // CORS doesn't apply server-side — this is the CLI process, not a
+            // browser.
+            const resp = await fetch(f);
+            if (!resp.ok) {
+              throw new Error(`fetch ${f}: HTTP ${resp.status}`);
+            }
+            return await resp.text();
+          }
+          return await Bun.file(f).text();
+        }),
+      );
+    } catch (e) {
+      process.stderr.write(`zigshape: ${(e as Error).message}\n`);
+      return 1;
+    }
   }
 
   const inferOptions: Partial<ZigshapeOptions> = {
@@ -319,6 +364,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     enums: args.enums,
     unions: args.unions,
     aliases: args.aliases,
+    treatRootArrayAsSamples: args.samplesFromArray,
     defaultsFromSamples: args.defaultsFromSamples,
   };
 
@@ -381,7 +427,7 @@ export async function run(argv: readonly string[]): Promise<number> {
 
   const opts: GenerateOptions =
     args.target === "serde-zig"
-      ? serdeDecorator(normalized, { denyUnknownFields })
+      ? serdeDecorator(normalized, { denyUnknownFields, flattenPaths, skipPaths })
       : {};
   let code = generateZig(normalized, opts);
 

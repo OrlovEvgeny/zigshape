@@ -9,6 +9,6 @@ export type ParseResult = {
   xmlRoot?: string;
 };
 
-export type Format = "json" | "yaml" | "toml" | "xml";
+export type Format = "json" | "ndjson" | "yaml" | "toml" | "xml";
 
-export const SUPPORTED_FORMATS: readonly Format[] = ["json", "yaml", "toml", "xml"];
+export const SUPPORTED_FORMATS: readonly Format[] = ["json", "ndjson", "yaml", "toml", "xml"];

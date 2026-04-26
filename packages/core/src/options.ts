@@ -24,6 +24,11 @@ export type ZigshapeOptions = {
    *  emit std.StringHashMap; "hash-map" → always when fields are homogeneous,
    *  ignoring key shape (still requires homogeneous values). */
   maps: MapStrategy;
+  /** When true and a sample's root is an array, each item of the array is
+   *  observed as an independent sample for inference purposes.  NDJSON input
+   *  forces this on; users can also opt in for plain JSON arrays they want
+   *  treated as a sample list rather than an array-shaped root. */
+  treatRootArrayAsSamples: boolean;
   mapMinKeys: number;
   enumMaxVariants: number;
   enumMinObservations: number;
@@ -40,6 +45,7 @@ export const DEFAULT_OPTIONS: ZigshapeOptions = {
   denyUnknownFields: false,
   strings: "slice",
   maps: "auto",
+  treatRootArrayAsSamples: false,
   mapMinKeys: 4,
   enumMaxVariants: 8,
   enumMinObservations: 3,

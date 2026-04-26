@@ -28,15 +28,44 @@ export function runPipeline({ samples, rootName, inferOptions, overrides }: Pipe
   const detectedFormats = new Set<string>();
   const xmlRoots: string[] = [];
 
+  // NDJSON forces the array-of-samples treatment regardless of the option.
+  // We track the resolved per-sample format so we can flip the flag for
+  // those entries even when the global option is left at its default.
+  const ndjsonSamples: number[] = [];
   for (let i = 0; i < samples.length; i++) {
     const sampleText = samples[i] ?? "";
+    let resolvedFormat: string;
     if (formatOpt === "auto") {
-      detectedFormats.add(detectFormat(sampleText).format);
+      resolvedFormat = detectFormat(sampleText).format;
+      detectedFormats.add(resolvedFormat);
+    } else {
+      resolvedFormat = formatOpt;
     }
     const r = parseSample(sampleText, i, formatOpt);
     for (const d of r.diagnostics.toArray()) all.push(d);
-    if (r.value && !r.diagnostics.hasErrors()) values.push(r.value);
+    if (r.value && !r.diagnostics.hasErrors()) {
+      values.push(r.value);
+      if (resolvedFormat === "ndjson") ndjsonSamples.push(values.length - 1);
+    }
     if (r.xmlRoot !== undefined) xmlRoots.push(r.xmlRoot);
+  }
+
+  // Expand top-level arrays into independent samples when (a) NDJSON forces
+  // it, or (b) the user asked for it via `treatRootArrayAsSamples`.  Each
+  // array element becomes its own sample for observe/infer purposes.
+  if (options.treatRootArrayAsSamples || ndjsonSamples.length > 0) {
+    const expanded: ZValue[] = [];
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i]!;
+      const shouldExpand = options.treatRootArrayAsSamples || ndjsonSamples.includes(i);
+      if (shouldExpand && v.kind === "array") {
+        for (const item of v.items) expanded.push(item);
+      } else {
+        expanded.push(v);
+      }
+    }
+    values.length = 0;
+    values.push(...expanded);
   }
 
   let xmlRootElement: string | undefined;

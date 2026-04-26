@@ -65,6 +65,17 @@
     }
   }
 
+  function kindBreakdown(f: ZigField): string | null {
+    if (!f.kindCounts) return null;
+    const parts: string[] = [];
+    for (const [k, c] of Object.entries(f.kindCounts)) {
+      if (c > 0) parts.push(`${k}: ${c}`);
+    }
+    const missing = f.parentTotal - f.observedCount;
+    if (missing > 0) parts.push(`missing: ${missing}`);
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }
+
   const overrideCount = $derived(Object.keys(overrides).length);
 </script>
 
@@ -102,6 +113,9 @@
                         <span class="badge alias">aliases: {f.aliases.join(", ")}</span>
                       {/if}
                       <span class="reason">{reasonText(f)}</span>
+                      {#if kindBreakdown(f)}
+                        <span class="breakdown">{kindBreakdown(f)}</span>
+                      {/if}
                       {#if f.renamed}
                         <span class="rename">renamed from <code>{f.originalKey}</code></span>
                       {/if}
@@ -284,6 +298,14 @@
   .badge.alias { background: #e6f4ff; color: #205085; }
   .reason { color: #666; font-size: 0.75rem; flex: 1 1 auto; }
   .reason code { background: #eef; padding: 0 0.25rem; border-radius: 2px; }
+  .breakdown {
+    color: #466;
+    font-size: 0.7rem;
+    font-family: ui-monospace, monospace;
+    background: #f0f7f3;
+    padding: 0.05rem 0.4rem;
+    border-radius: 2px;
+  }
   .rename { font-size: 0.75rem; color: #2a6; }
   .rename code { background: #eef9f0; padding: 0 0.25rem; border-radius: 2px; }
   .empty { color: #888; font-size: 0.8rem; margin: 0.25rem 0 0; }

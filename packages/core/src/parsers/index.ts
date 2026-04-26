@@ -1,5 +1,6 @@
 import { detectFormat } from "./detect";
 import { parseJson } from "./json";
+import { parseNdjson } from "./ndjson";
 import { parseToml } from "./toml";
 import { parseXml } from "./xml";
 import { parseYaml } from "./yaml";
@@ -9,6 +10,7 @@ export type { Format, ParseResult } from "./types";
 export { SUPPORTED_FORMATS } from "./types";
 export { detectFormat, type DetectResult } from "./detect";
 export { parseJson } from "./json";
+export { parseNdjson } from "./ndjson";
 export { parseToml } from "./toml";
 export { parseXml } from "./xml";
 export { parseYaml } from "./yaml";
@@ -22,6 +24,8 @@ export function parseSample(
   switch (resolved) {
     case "json":
       return parseJson(input, sampleIndex);
+    case "ndjson":
+      return parseNdjson(input, sampleIndex);
     case "yaml":
       return parseYaml(input, sampleIndex);
     case "toml":

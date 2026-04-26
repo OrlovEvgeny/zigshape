@@ -23,6 +23,12 @@ export function detectFormat(input: string): DetectResult {
     return { format: "xml", confidence: 0.95, alternatives: [] };
   }
   if (first === "{") {
+    // NDJSON: multiple top-level JSON objects, one per non-empty line.  We
+    // require at least 2 objects to avoid mistaking single multiline JSON for
+    // NDJSON (which itself can fit on multiple lines if pretty-printed).
+    if (looksLikeNdjson(trimmed)) {
+      return { format: "ndjson", confidence: 0.85, alternatives: ["json"] };
+    }
     return { format: "json", confidence: 0.95, alternatives: ["yaml"] };
   }
   if (first === "[") {
@@ -74,6 +80,22 @@ export function detectFormat(input: string): DetectResult {
 
   // Fallback: low-confidence JSON (will fail clearly if the user pasted noise).
   return { format: "json", confidence: 0.2, alternatives: ["yaml", "toml"] };
+}
+
+function looksLikeNdjson(input: string): boolean {
+  // Cheap pass: count lines that start with `{` and end (after trim) with `}`.
+  // Two or more top-level lines matching this pattern strongly imply NDJSON.
+  // We don't try to fully parse — that's the parser's job — but we want to
+  // distinguish `{...}\n{...}\n` (NDJSON) from `{\n  "k": 1\n}` (regular JSON).
+  let hits = 0;
+  for (const raw of input.split(/\r?\n/)) {
+    const t = raw.trim();
+    if (t.length === 0) continue;
+    if (t.startsWith("{") && t.endsWith("}")) hits += 1;
+    else return false;
+    if (hits >= 2) return true;
+  }
+  return false;
 }
 
 function looksLikeTomlAssignment(line: string): boolean {

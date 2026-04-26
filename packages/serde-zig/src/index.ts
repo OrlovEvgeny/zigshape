@@ -13,10 +13,18 @@ import { ALL_CONVENTIONS, fromSnake, type Convention } from "./conventions";
 export type { Convention };
 
 /** Caller-supplied serde decoration knobs.  Phase A wires `denyUnknownFields`;
- *  Phase D will add per-path `flatten` / `skip` overrides on top. */
+ *  Phase H adds per-path `flatten` / `skip` overrides for fields the user
+ *  has explicitly tagged. */
 export type SerdeDecorateOptions = {
   /** Emit `.deny_unknown_fields = true` on every generated struct. */
   denyUnknownFields?: boolean;
+  /** Field paths that should be flattened: emits `.flatten = .{ .field, … }`
+   *  on the parent struct.  `flatten` keeps the nested Zig type but flattens
+   *  on the wire. */
+  flattenPaths?: string[];
+  /** Field paths that should be skipped during serialization: emits
+   *  `.skip = .{ .field, … }`. */
+  skipPaths?: string[];
 };
 
 /** Produce GenerateOptions that decorate every struct / enum / union with the
@@ -28,9 +36,12 @@ export function serdeDecorator(
   options: SerdeDecorateOptions = {},
 ): GenerateOptions {
   const denyUnknownFields = options.denyUnknownFields === true;
+  const flattenSet = new Set(options.flattenPaths ?? []);
+  const skipSet = new Set(options.skipPaths ?? []);
   const anyDecorated = result.decls.some((d) => {
     if (d.kind === "struct") {
       if (d.fields.some((f) => f.renamed || f.xml || (f.aliases?.length ?? 0) > 0)) return true;
+      if (d.fields.some((f) => flattenSet.has(f.path) || skipSet.has(f.path))) return true;
       if (result.xmlRootElement && d.name === result.rootName) return true;
       if (denyUnknownFields) return true;
       return false;
@@ -44,6 +55,8 @@ export function serdeDecorator(
       buildStructBlock(decl, {
         xmlRoot: result.xmlRootElement && decl.name === result.rootName ? result.xmlRootElement : undefined,
         denyUnknownFields,
+        flattenSet,
+        skipSet,
       }),
     decorateEnum: (decl) => buildEnumBlock(decl),
     decorateUnion: (decl) => buildUnionBlock(decl),
@@ -92,12 +105,19 @@ function fieldFitsConvention(f: ZigField, c: Convention): boolean {
 
 function buildStructBlock(
   decl: StructDecl,
-  opts: { xmlRoot?: string; denyUnknownFields: boolean },
+  opts: {
+    xmlRoot?: string;
+    denyUnknownFields: boolean;
+    flattenSet: ReadonlySet<string>;
+    skipSet: ReadonlySet<string>;
+  },
 ): string[] | null {
   const renamed = decl.fields.filter((f) => f.renamed);
   const attributes = decl.fields.filter((f) => f.xml === "attribute");
   const textFields = decl.fields.filter((f) => f.xml === "text");
   const aliased = decl.fields.filter((f) => f.aliases && f.aliases.length > 0);
+  const flattened = decl.fields.filter((f) => opts.flattenSet.has(f.path));
+  const skipped = decl.fields.filter((f) => opts.skipSet.has(f.path));
   const xmlRoot = opts.xmlRoot;
   const denyUnknownFields = opts.denyUnknownFields;
 
@@ -106,6 +126,8 @@ function buildStructBlock(
     attributes.length === 0 &&
     textFields.length === 0 &&
     aliased.length === 0 &&
+    flattened.length === 0 &&
+    skipped.length === 0 &&
     !xmlRoot &&
     !denyUnknownFields
   ) {
@@ -141,6 +163,14 @@ function buildStructBlock(
       lines.push(`        .${f.name} = &.{ ${list} },`);
     }
     lines.push("    },");
+  }
+  if (flattened.length > 0) {
+    const list = flattened.map((f) => `.${f.name}`).join(", ");
+    lines.push(`    .flatten = .{ ${list} },`);
+  }
+  if (skipped.length > 0) {
+    const list = skipped.map((f) => `.${f.name}`).join(", ");
+    lines.push(`    .skip = .{ ${list} },`);
   }
   if (denyUnknownFields) {
     lines.push("    .deny_unknown_fields = true,");

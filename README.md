@@ -45,8 +45,10 @@ bun apps/cli/src/main.ts <file> --root User --target serde-zig
 ## CLI flags
 
 ```
-zigshape [files...]
-  [--format auto|json|yaml|toml|xml]  input format; default auto
+zigshape [files-or-urls...]
+  [--format auto|json|ndjson|yaml|toml|xml]
+                                      input format; default auto
+  [--samples-from-array]              treat each top-level array item as a sample
   [--int smallest|u64|i64]            integer width strategy; default smallest
   [--strings slice|mut|sentinel]      string wire form; default slice
   [--maps auto|struct|hash-map]       map detection override; default auto
@@ -65,7 +67,7 @@ zigshape [files...]
   [--stdin]                           read sample from stdin
 ```
 
-Several files merge as samples of the same shape — fields appearing in only some samples become `?T = null`.
+Several files merge as samples of the same shape — fields appearing in only some samples become `?T = null`. Arguments matching `https?://…` are fetched at runtime, so `zigshape https://api.example.com/user --root User` works directly.
 
 ## Schema reports + drift CI
 
@@ -82,11 +84,15 @@ zigshape samples/api-v2.json --check-drift schema.json   # exit 3 on breaking ch
 {
   "options": { "intStrategy": "smallest", "denyUnknownFields": true },
   "overrides": { "$.user.id": { "type": "[]const u8" } },
-  "serde": { "denyUnknownFields": true }
+  "serde": {
+    "denyUnknownFields": true,
+    "flattenPaths": ["$.profile"],
+    "skipPaths": ["$.email"]
+  }
 }
 ```
 
-CLI flags always win over config; config fills the gaps. Per-field overrides match by JSON path (`$.user.id`).
+CLI flags always win over config; config fills the gaps. Per-field overrides match by JSON path (`$.user.id`). `serde.flattenPaths` emits `.flatten = .{ … }` and `serde.skipPaths` emits `.skip = .{ … }` on the parent struct.
 
 ## Web playground
 
@@ -122,11 +128,12 @@ See `docs/inference.md` for what triggers each shape decision.
 
 ## Roadmap
 
-v1.0 shipped: alias detection across samples, schema drift CI, share links, editable per-field overrides, VS Code extension, per-format SEO pages.
+v1.0 shipped: alias detection across samples, schema drift CI, share links, editable per-field overrides, VS Code extension, per-format SEO pages, NDJSON + array-as-samples, URL CLI input, serde flatten/skip via config, kind-breakdown inspector.
 
 Future:
 - TOML / XML per-key source ranges (currently whole-document fallback).
 - `--rename-all` and `--arrays slice|arraylist|fixed` flags.
+- Other `union(enum)` tagging styles (external / adjacent / untagged).
 - vscode-test integration harness for end-to-end command coverage.
 
-Plan files live in `.claude/plans/`.
+Plan files live in `.claude/plans/`. See `docs/limitations.md` for known limits.

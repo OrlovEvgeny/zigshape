@@ -33,6 +33,11 @@ export type ZigField = {
   /** True when one or more user-supplied overrides modified this field —
    *  drives the inspector's "overridden" badge. */
   overridden?: boolean;
+  /** Per-kind observation counts for the inspector breakdown.  e.g.
+   *  `{ string: 6, null: 1 }` plus `missing: 3` derived from
+   *  `parentTotal - observedCount`.  Only populated when the normalize
+   *  caller passes `observations`. */
+  kindCounts?: Record<string, number>;
 };
 
 /** Per-path override applied at normalize time.  Maps a field path
@@ -356,6 +361,15 @@ function buildField(
       override.optional !== undefined)
   );
 
+  let kindCounts: Record<string, number> | undefined;
+  if (state.observations) {
+    const o = state.observations.get(fieldShape.path);
+    if (o) {
+      kindCounts = {};
+      for (const [k, c] of o.countByKind) if (c > 0) kindCounts[k] = c;
+    }
+  }
+
   return {
     name: finalName,
     escaped: sanitized.escaped,
@@ -370,6 +384,7 @@ function buildField(
     xml: fieldShape.xml,
     aliases: fieldShape.aliases,
     overridden: overridden || undefined,
+    kindCounts,
   };
 }
 

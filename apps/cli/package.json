@@ -1,0 +1,22 @@
+{
+  "name": "@zigshape/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "zigshape": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "build": "bun build --compile --outfile dist/zigshape ./src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@zigshape/core": "workspace:*",
+    "@zigshape/serde-zig": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

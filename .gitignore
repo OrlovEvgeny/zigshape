@@ -1,3 +1,13 @@
 .zig-cache/
 zig-out/
 *.o
+
+node_modules/
+*.tsbuildinfo
+dist/
+build/
+.svelte-kit/
+
+.DS_Store
+.idea/
+.vscode/

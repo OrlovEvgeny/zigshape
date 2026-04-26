@@ -1,0 +1,9 @@
+{
+  "name": "@zigshape/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'SvelteKit scaffold not yet installed; see step 10' && exit 1"
+  }
+}

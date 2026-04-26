@@ -9,8 +9,9 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "bun run --filter '*' typecheck",
-    "dev": "bun --cwd apps/web run dev",
-    "cli": "bun --cwd apps/cli run start"
+    "dev": "bun run --filter '@zigshape/web' dev",
+    "build:web": "bun run --filter '@zigshape/web' build",
+    "cli": "bun run --filter '@zigshape/cli' start --"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

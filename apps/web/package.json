@@ -4,6 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "echo 'SvelteKit scaffold not yet installed; see step 10' && exit 1"
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@zigshape/core": "workspace:*",
+    "@zigshape/serde-zig": "workspace:*"
+  },
+  "devDependencies": {
+    "@codemirror/lang-json": "^6.0.1",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.34.0",
+    "@sveltejs/adapter-static": "^3.0.6",
+    "@sveltejs/kit": "^2.7.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "codemirror": "^6.0.1",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.0"
   }
 }

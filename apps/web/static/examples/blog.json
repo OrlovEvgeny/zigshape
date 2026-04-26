@@ -1,0 +1,8 @@
+{
+  "name": "My blog",
+  "owner": { "id": 1, "displayName": "Alice" },
+  "posts": [
+    { "id": 1, "title": "Hello", "tags": ["intro", "meta"] },
+    { "id": 2, "title": "Second", "tags": [] }
+  ]
+}

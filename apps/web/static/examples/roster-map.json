@@ -1,0 +1,6 @@
+{
+  "u-1001": { "name": "Alice", "active": true },
+  "u-1002": { "name": "Bob", "active": false },
+  "u-1003": { "name": "Carol", "active": true },
+  "u-1004": { "name": "Dave", "active": true }
+}

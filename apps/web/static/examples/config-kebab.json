@@ -1,0 +1,9 @@
+{
+  "server-port": 3000,
+  "max-connections": 100,
+  "log-level": "info",
+  "feature-flags": {
+    "experimental-router": true,
+    "fast-path": false
+  }
+}

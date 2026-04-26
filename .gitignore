@@ -7,7 +7,7 @@ node_modules/
 dist/
 build/
 .svelte-kit/
-
+lint-comm
 .DS_Store
 .idea/
 .vscode/

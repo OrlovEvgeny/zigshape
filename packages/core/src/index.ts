@@ -10,6 +10,7 @@ export type {
   ZObject,
   ZField,
 } from "./value";
+export { pathSrcMap } from "./value";
 export {
   parseSample,
   parseJson,

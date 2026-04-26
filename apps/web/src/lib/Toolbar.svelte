@@ -11,9 +11,12 @@
     format: FormatArg;
     detectedFormat: Format | null;
     presetId: PresetId;
+    zigFmt: boolean;
     onLoadExample: (e: Example) => void;
     onCopy: () => void;
     onDownload: () => void;
+    onShareConfig: () => void;
+    onShareWithSamples: () => void;
     canCopy: boolean;
   };
 
@@ -23,9 +26,12 @@
     format = $bindable(),
     detectedFormat,
     presetId = $bindable(),
+    zigFmt = $bindable(),
     onLoadExample,
     onCopy,
     onDownload,
+    onShareConfig,
+    onShareWithSamples,
     canCopy,
   }: Props = $props();
 
@@ -76,9 +82,15 @@
       {/each}
     </select>
   </label>
+  <label class="checkbox-label">
+    <input type="checkbox" bind:checked={zigFmt} />
+    <span>zig fmt</span>
+  </label>
   <span class="spacer"></span>
   <button type="button" onclick={onCopy} disabled={!canCopy}>Copy Zig</button>
   <button type="button" onclick={onDownload} disabled={!canCopy}>Download</button>
+  <button type="button" onclick={onShareConfig}>Share config</button>
+  <button type="button" onclick={onShareWithSamples}>Share + samples</button>
 </div>
 
 {#if currentPreset}

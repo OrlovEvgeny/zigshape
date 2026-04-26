@@ -38,6 +38,8 @@ export {
   type UnionDeclVariant,
   type Decl,
   type ZigField,
+  type FieldOverride,
+  type Overrides,
 } from "./normalize";
 export { renderZigType, type ZigType, type ZigIntWidth, pickIntWidth } from "./zig/types";
 export { escapeZigString, sanitizeFieldName, sanitizeStructName, toSnakeCase, toPascalCase, singularize } from "./zig/identifier";

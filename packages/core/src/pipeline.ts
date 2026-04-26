@@ -1,6 +1,6 @@
 import { DiagnosticBag, type Diagnostic } from "./diagnostics";
 import { infer } from "./infer";
-import { normalize, type NormalizeResult } from "./normalize";
+import { normalize, type NormalizeResult, type Overrides } from "./normalize";
 import { observeSamples } from "./observe";
 import { withDefaults, type ZigshapeOptions } from "./options";
 import { detectFormat, parseSample } from "./parse";
@@ -10,6 +10,7 @@ export type PipelineInput = {
   samples: string[];
   rootName: string;
   inferOptions?: Partial<ZigshapeOptions>;
+  overrides?: Overrides;
 };
 
 export type PipelineResult = {
@@ -19,7 +20,7 @@ export type PipelineResult = {
 
 /** Run parse → observe → infer → normalize, collecting diagnostics from every stage.
  *  When all samples fail to parse, normalized is null and warnings carry the errors. */
-export function runPipeline({ samples, rootName, inferOptions }: PipelineInput): PipelineResult {
+export function runPipeline({ samples, rootName, inferOptions, overrides }: PipelineInput): PipelineResult {
   const all = new DiagnosticBag();
   const values: ZValue[] = [];
   const options = withDefaults(inferOptions);
@@ -73,6 +74,7 @@ export function runPipeline({ samples, rootName, inferOptions }: PipelineInput):
     defaultsFromSamples: options.defaultsFromSamples,
     observations,
     xmlRootElement,
+    overrides,
   });
   return { normalized, warnings: all.toArray() };
 }

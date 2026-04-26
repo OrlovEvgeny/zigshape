@@ -11,6 +11,7 @@ import {
   type GenerateOptions,
   type IntStrategy,
   type MapStrategy,
+  type Overrides,
   type SchemaReport,
   type StringStrategy,
   type UnionStrategy,
@@ -252,6 +253,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
 
   let denyUnknownFields = args.denyUnknownFields;
+  let overrides: Overrides | undefined;
   if (args.config) {
     try {
       const cfg = await loadConfig(args.config);
@@ -293,6 +295,9 @@ export async function run(argv: readonly string[]): Promise<number> {
       if (cfg.serde?.denyUnknownFields !== undefined && !args.explicit.has("denyUnknownFields")) {
         denyUnknownFields = cfg.serde.denyUnknownFields;
       }
+      if (cfg.overrides && Object.keys(cfg.overrides).length > 0) {
+        overrides = cfg.overrides;
+      }
     } catch (e) {
       process.stderr.write(`zigshape: ${(e as Error).message}\n`);
       return 2;
@@ -321,6 +326,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     samples,
     rootName: args.rootName,
     inferOptions,
+    overrides,
   });
 
   for (const w of warnings) {

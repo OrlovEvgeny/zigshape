@@ -22,7 +22,9 @@
     runPipeline,
     type Decl,
     type Diagnostic,
+    type FieldOverride,
     type Format,
+    type Overrides,
     type SrcRef,
   } from "@zigshape/core";
   import { serdeDecorator } from "@zigshape/serde-zig";
@@ -42,6 +44,7 @@
   let formatterError = $state<string | null>(null);
   let inputHighlight = $state<HighlightRange | null>(null);
   let shareNotice = $state<string | null>(null);
+  let overrides = $state<Overrides>({});
 
   const detectedFormat = $derived.by(() => {
     if (format !== "auto") return null;
@@ -71,6 +74,7 @@
       samples: nonEmpty,
       rootName,
       inferOptions: { ...presetOptions, format },
+      overrides,
     });
     if (!normalized) return { code: "", warnings, decls: [] as Decl[] };
     const opts = target === "serde-zig" ? serdeDecorator(normalized) : {};
@@ -111,7 +115,22 @@
     activeIndex = 0;
     rootName = e.rootName;
     target = e.target;
+    // Switching examples invalidates the inspector overrides — paths from one
+    // example don't make sense in another's tree.
+    overrides = {};
   }
+
+  function setOverride(path: string, ov: FieldOverride | null) {
+    if (ov === null) {
+      const next = { ...overrides };
+      delete next[path];
+      overrides = next;
+    } else {
+      overrides = { ...overrides, [path]: ov };
+    }
+  }
+
+  function clearAllOverrides() { overrides = {}; }
 
   function addSample() {
     samples = [...samples, ""];
@@ -332,7 +351,13 @@
   </section>
 
   <Warnings warnings={generated.warnings} onJump={jumpToWarning} />
-  <Inspector decls={generated.decls} onJump={jumpToPath} />
+  <Inspector
+    decls={generated.decls}
+    {overrides}
+    onJump={jumpToPath}
+    onSetOverride={setOverride}
+    onClearAll={clearAllOverrides}
+  />
 
   <footer>
     <small>Local-first. Your input never leaves the browser.</small>

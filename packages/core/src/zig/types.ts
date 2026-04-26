@@ -10,7 +10,11 @@ export type ZigType =
   | { kind: "ref"; structName: string }
   | { kind: "stringMap"; value: ZigType }
   | { kind: "json" }
-  | { kind: "optional"; inner: ZigType };
+  | { kind: "optional"; inner: ZigType }
+  /** User-provided Zig type expression — bypasses the inference-driven
+   *  rendering.  Set by the override mechanism (CLI --config or web inspector
+   *  field editor); never produced by normal inference. */
+  | { kind: "raw"; text: string };
 
 export function renderZigType(t: ZigType): string {
   switch (t.kind) {
@@ -39,6 +43,8 @@ export function renderZigType(t: ZigType): string {
       return "std.json.Value";
     case "optional":
       return "?" + renderZigType(t.inner);
+    case "raw":
+      return t.text;
   }
 }
 

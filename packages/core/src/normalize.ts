@@ -30,7 +30,20 @@ export type ZigField = {
    *  alias detection.  Drives `.alias` in the serde decorator; plain target
    *  ignores. */
   aliases?: string[];
+  /** True when one or more user-supplied overrides modified this field —
+   *  drives the inspector's "overridden" badge. */
+  overridden?: boolean;
 };
+
+/** Per-path override applied at normalize time.  Maps a field path
+ *  (`$.user.id`) to a partial replacement of the inferred ZigField. */
+export type FieldOverride = {
+  type?: string;
+  name?: string;
+  optional?: boolean;
+};
+
+export type Overrides = Record<string, FieldOverride>;
 
 export type StructDecl = {
   kind: "struct";
@@ -108,6 +121,9 @@ export type NormalizeOptions = {
   observations?: ObservationMap;
   /** XML root element name forwarded from the parser for xml_root emission. */
   xmlRootElement?: string;
+  /** Per-path field overrides — applied after inference, before the field
+   *  type is finalised.  Used by the CLI config file and the web inspector. */
+  overrides?: Overrides;
 };
 
 type NormalizeState = {
@@ -118,6 +134,7 @@ type NormalizeState = {
   stringRepr: ZigStringRepr;
   defaultsFromSamples: boolean;
   observations?: ObservationMap;
+  overrides: Overrides;
 };
 
 export function normalize(root: Shape, options: NormalizeOptions): NormalizeResult {
@@ -129,6 +146,7 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     stringRepr: options.stringStrategy ?? "slice",
     defaultsFromSamples: options.defaultsFromSamples ?? false,
     observations: options.observations,
+    overrides: options.overrides ?? {},
   };
   // When root is non-object, the generator emits a top-level alias
   // `pub const <rootName> = <rootType>;`.  Reserve the name now so any inner
@@ -285,7 +303,15 @@ function buildField(
   usedFieldNames: Set<string>,
   state: NormalizeState,
 ): ZigField {
-  const sanitized = sanitizeFieldName(originalKey);
+  const override = state.overrides[fieldShape.path];
+
+  // Apply name override before unique-suffixing so the requested name wins
+  // collisions deterministically.  Sanitize the override so users can't
+  // produce illegal Zig identifiers.
+  let sanitized = sanitizeFieldName(originalKey);
+  if (override?.name && override.name !== "") {
+    sanitized = sanitizeFieldName(override.name);
+  }
   const baseName = sanitized.text;
   const finalName = uniqify(usedFieldNames, baseName);
   usedFieldNames.add(finalName);
@@ -293,12 +319,26 @@ function buildField(
   // Hint for nested struct naming uses the original key, not the sanitized one,
   // so plural-stripping and casing work on the source name.
   const innerHint = originalKey;
-  let type = walkShape(fieldShape.shape, innerHint, state, false);
+  let type: ZigType;
+  if (override?.type && override.type !== "") {
+    type = { kind: "raw", text: override.type };
+  } else {
+    type = walkShape(fieldShape.shape, innerHint, state, false);
+  }
+
+  // Decide optionality: explicit override wins; otherwise carry the inferred
+  // optionality.  When override forces non-optional on an inferred-optional
+  // field, drop the `?` wrapper and the `null` default — the user has stated
+  // the field is always present in their data.
+  const inferredOptional = fieldShape.optional;
+  const wantOptional =
+    override?.optional !== undefined ? override.optional : inferredOptional;
+
   let defaultExpr: string | undefined;
-  if (fieldShape.optional) {
-    type = { kind: "optional", inner: type };
+  if (wantOptional) {
+    if (type.kind !== "optional") type = { kind: "optional", inner: type };
     defaultExpr = "null";
-  } else if (state.defaultsFromSamples && state.observations) {
+  } else if (state.defaultsFromSamples && state.observations && !override?.type) {
     const k = fieldShape.shape.kind;
     if (k === "bool" || k === "int" || k === "string") {
       const o = state.observations.get(fieldShape.path);
@@ -308,6 +348,13 @@ function buildField(
       }
     }
   }
+
+  const overridden = !!(
+    override &&
+    ((override.name && override.name !== originalKey) ||
+      override.type ||
+      override.optional !== undefined)
+  );
 
   return {
     name: finalName,
@@ -322,6 +369,7 @@ function buildField(
     optionalReason: fieldShape.optionalReason,
     xml: fieldShape.xml,
     aliases: fieldShape.aliases,
+    overridden: overridden || undefined,
   };
 }
 

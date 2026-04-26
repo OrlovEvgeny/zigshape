@@ -27,6 +27,11 @@ export type Observation = {
   // observations (all true / all false).
   boolTrue?: number;
   boolFalse?: number;
+  // XML-specific.  When this observation is for an object, records which
+  // child keys were tagged as attributes / text nodes by the XML parser.
+  // Read by `infer` to stamp FieldShape.xml so the serde decorator can emit
+  // xml_attribute lists.  Attribute mark wins on multi-sample disagreement.
+  childKeyXml?: Map<string, "attribute" | "text">;
   // Object items observed at this path (only populated when this path is an
   // array element).  Used by tagged-union inference, which re-groups items by
   // discriminator value.  Capped to bound memory on huge inputs.
@@ -119,6 +124,12 @@ function observe(value: ZValue, path: string, map: ObservationMap): void {
           o.childKeysSeen.add(key);
           o.childKeyOrder.push(key);
           if (!isPlainIdentifier(key)) o.childKeyHasNonIdent = true;
+        }
+        if (field.xml) {
+          o.childKeyXml ??= new Map();
+          // Attribute wins over text on multi-sample disagreement.
+          const prev = o.childKeyXml.get(key);
+          if (prev !== "attribute") o.childKeyXml.set(key, field.xml.kind);
         }
         observe(field.value, childPath(path, key), map);
       }

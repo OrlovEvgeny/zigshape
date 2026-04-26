@@ -1,6 +1,7 @@
 import { detectFormat } from "./detect";
 import { parseJson } from "./json";
 import { parseToml } from "./toml";
+import { parseXml } from "./xml";
 import { parseYaml } from "./yaml";
 import type { Format, ParseResult } from "./types";
 
@@ -9,6 +10,7 @@ export { SUPPORTED_FORMATS } from "./types";
 export { detectFormat, type DetectResult } from "./detect";
 export { parseJson } from "./json";
 export { parseToml } from "./toml";
+export { parseXml } from "./xml";
 export { parseYaml } from "./yaml";
 
 export function parseSample(
@@ -24,5 +26,7 @@ export function parseSample(
       return parseYaml(input, sampleIndex);
     case "toml":
       return parseToml(input, sampleIndex);
+    case "xml":
+      return parseXml(input, sampleIndex);
   }
 }

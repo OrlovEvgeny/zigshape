@@ -52,6 +52,7 @@
       <option value="json">JSON</option>
       <option value="yaml">YAML</option>
       <option value="toml">TOML</option>
+      <option value="xml">XML</option>
     </select>
   </label>
   <label>Target

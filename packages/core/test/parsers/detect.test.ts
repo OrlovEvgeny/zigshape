@@ -47,4 +47,13 @@ describe("detectFormat", () => {
     const r = detectFormat("# config\nport: 80");
     expect(r.format).toBe("yaml");
   });
+  test("XML by element start", () => {
+    expect(detectFormat("<user><name>Alice</name></user>").format).toBe("xml");
+  });
+  test("XML by declaration", () => {
+    expect(detectFormat('<?xml version="1.0"?>\n<user/>').format).toBe("xml");
+  });
+  test("XML with leading whitespace and BOM", () => {
+    expect(detectFormat("﻿\n  <user/>").format).toBe("xml");
+  });
 });

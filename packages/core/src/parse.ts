@@ -3,6 +3,7 @@ export {
   parseJson,
   parseYaml,
   parseToml,
+  parseXml,
   detectFormat,
   SUPPORTED_FORMATS,
   type Format,

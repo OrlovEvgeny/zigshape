@@ -17,14 +17,21 @@ export type { Convention };
  *  `const serde = @import("serde");` whenever any decoration is non-empty
  *  (including union tag plumbing, which always needs the serde namespace). */
 export function serdeDecorator(result: NormalizeResult): GenerateOptions {
-  const anyRenamed = result.decls.some((d) => {
-    if (d.kind === "struct") return d.fields.some((f) => f.renamed);
+  const anyDecorated = result.decls.some((d) => {
+    if (d.kind === "struct") {
+      if (d.fields.some((f) => f.renamed || f.xml)) return true;
+      if (result.xmlRootElement && d.name === result.rootName) return true;
+      return false;
+    }
     if (d.kind === "enum") return d.variants.some((v) => v.renamed);
     return true; // union always emits .tag/.tag_field
   });
   return {
-    extraImports: anyRenamed ? ['const serde = @import("serde");'] : [],
-    decorateStruct: (decl) => buildStructBlock(decl),
+    extraImports: anyDecorated ? ['const serde = @import("serde");'] : [],
+    decorateStruct: (decl) =>
+      buildStructBlock(decl, {
+        xmlRoot: result.xmlRootElement && decl.name === result.rootName ? result.xmlRootElement : undefined,
+      }),
     decorateEnum: (decl) => buildEnumBlock(decl),
     decorateUnion: (decl) => buildUnionBlock(decl),
   };
@@ -70,15 +77,36 @@ function fieldFitsConvention(f: ZigField, c: Convention): boolean {
   return fromSnake(f.name, c) === f.originalKey;
 }
 
-function buildStructBlock(decl: StructDecl): string[] | null {
+function buildStructBlock(
+  decl: StructDecl,
+  opts: { xmlRoot?: string },
+): string[] | null {
   const renamed = decl.fields.filter((f) => f.renamed);
-  if (renamed.length === 0) return null;
+  const attributes = decl.fields.filter((f) => f.xml === "attribute");
+  const textFields = decl.fields.filter((f) => f.xml === "text");
+  const xmlRoot = opts.xmlRoot;
 
-  const convention = detectConvention(decl);
+  if (
+    renamed.length === 0 &&
+    attributes.length === 0 &&
+    textFields.length === 0 &&
+    !xmlRoot
+  ) {
+    return null;
+  }
+
+  const convention = renamed.length > 0 ? detectConvention(decl) : null;
   const explicit = convention ? [] : renamed;
 
   const lines: string[] = [];
   lines.push("pub const serde = .{");
+  if (xmlRoot) {
+    lines.push(`    .xml_root = "${escapeZigString(xmlRoot)}",`);
+  }
+  if (attributes.length > 0) {
+    const list = attributes.map((f) => `.${f.name}`).join(", ");
+    lines.push(`    .xml_attribute = .{ ${list} },`);
+  }
   if (convention) {
     lines.push(`    .rename_all = serde.NamingConvention.${convention},`);
   }
@@ -88,6 +116,11 @@ function buildStructBlock(decl: StructDecl): string[] | null {
       lines.push(`        .${f.name} = "${escapeZigString(f.originalKey)}",`);
     }
     lines.push("    },");
+  }
+  for (const f of textFields) {
+    lines.push(
+      `    // TODO: serde.zig does not document an xml_text mapping for field '${f.name}'; verify behavior.`,
+    );
   }
   lines.push("};");
   return lines;

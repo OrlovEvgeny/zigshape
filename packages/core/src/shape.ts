@@ -44,6 +44,10 @@ export type FieldShape = {
   observedCount: number;
   parentTotal: number;
   optionalReason?: "missing" | "null" | "missing-and-null";
+  /** XML-specific tag stamped from observation.  Drives `xml_attribute`
+   *  emission in the serde decorator and the text-node TODO comment.
+   *  Undefined for non-XML inputs. */
+  xml?: "attribute" | "text";
 };
 
 export function shapesEqual(a: Shape, b: Shape): boolean {

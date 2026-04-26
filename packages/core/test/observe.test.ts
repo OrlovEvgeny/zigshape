@@ -89,6 +89,23 @@ describe("observeSamples", () => {
     expect(obs.get("$.a")!.firstSrc!.sample).toBe(0);
   });
 
+  test("xml attribute keys propagate to parent observation", () => {
+    const obs = observeSamples(
+      parseAll('{"id":1,"name":"A"}').map((v) => {
+        // Manually tag `id` as XML attribute on the ZField to simulate the
+        // XML parser's output without going through a full parse.
+        if (v.kind === "object") {
+          const idField = v.fields.get("id");
+          if (idField) idField.xml = { kind: "attribute" };
+        }
+        return v;
+      }),
+    );
+    const root = obs.get(ROOT_PATH)!;
+    expect(root.childKeyXml?.get("id")).toBe("attribute");
+    expect(root.childKeyXml?.get("name")).toBeUndefined();
+  });
+
   test("bool true/false counts tracked separately", () => {
     const obs = observeSamples(
       parseAll('{"a": true, "b": false}', '{"a": true, "b": true}'),

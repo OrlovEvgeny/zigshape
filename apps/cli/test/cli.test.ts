@@ -204,8 +204,58 @@ describe("cli", () => {
   });
 
   test("invalid --format rejected", async () => {
-    const r = await runCli(["--stdin", "--format", "xml"], "{}");
+    const r = await runCli(["--stdin", "--format", "yaml-2"], "{}");
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("--format");
+  });
+
+  test("XML input with attributes via --format xml", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "xml", "--root", "User"],
+      '<user id="42"><name>Alice</name></user>',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("pub const User = struct {");
+    expect(r.stdout).toContain("name: []const u8");
+    expect(r.stdout).toContain("id: u8");
+  });
+
+  test("XML auto-detect from < prefix", async () => {
+    const r = await runCli(
+      ["--stdin", "--root", "User"],
+      '<user><name>Alice</name></user>',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("pub const User = struct {");
+  });
+
+  test("XML serde-zig target emits xml_root + xml_attribute", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "xml", "--root", "User", "--target", "serde-zig"],
+      '<user id="42"><name>Alice</name></user>',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('.xml_root = "user"');
+    expect(r.stdout).toContain(".xml_attribute = .{ .id }");
+    expect(r.stdout).toContain('const serde = @import("serde");');
+  });
+
+  test("XML mixed-content warning fires", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "xml", "--root", "D"],
+      '<description lang="en">Hello</description>',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain("xml_mixed_content");
+    expect(r.stdout).toContain("value: []const u8");
+  });
+
+  test("XML namespace warning fires", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "xml", "--root", "R"],
+      '<root xmlns:ns="http://x"><ns:name>Alice</ns:name></root>',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain("xml_namespace");
   });
 });

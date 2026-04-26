@@ -29,15 +29,15 @@ type Args = {
   help: boolean;
 };
 
-const HELP = `zigshape — generate Zig structs from JSON / YAML / TOML
+const HELP = `zigshape — generate Zig structs from JSON / YAML / TOML / XML
 
 Usage:
   zigshape <file>... [options]
   zigshape --stdin   [options]
 
 Input options:
-  --format auto|json|yaml|toml   Input format. Default: auto.
-  --stdin                        Read a single sample from stdin.
+  --format auto|json|yaml|toml|xml   Input format. Default: auto.
+  --stdin                            Read a single sample from stdin.
 
 Output options:
   --root NAME                    Struct name for the root type. Default: Root.
@@ -95,8 +95,8 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case "--format": {
         const f = next() as FormatArg | undefined;
-        if (f !== "auto" && f !== "json" && f !== "yaml" && f !== "toml") {
-          throw new Error(`--format must be auto|json|yaml|toml (got '${f}')`);
+        if (f !== "auto" && f !== "json" && f !== "yaml" && f !== "toml" && f !== "xml") {
+          throw new Error(`--format must be auto|json|yaml|toml|xml (got '${f}')`);
         }
         args.format = f;
         break;

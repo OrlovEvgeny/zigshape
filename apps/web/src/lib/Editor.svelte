@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { json } from "@codemirror/lang-json";
+  import { xml } from "@codemirror/lang-xml";
   import { yaml } from "@codemirror/lang-yaml";
   import { Compartment, EditorSelection, EditorState, StateEffect, StateField } from "@codemirror/state";
   import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
   import { basicSetup } from "codemirror";
 
   export type HighlightRange = { from: number; length: number; nonce: number };
-  export type EditorLanguage = "json" | "yaml" | "toml" | "plain";
+  export type EditorLanguage = "json" | "yaml" | "toml" | "xml" | "plain";
 
   type Props = {
     value: string;
@@ -58,6 +59,7 @@
   function languageExtension(lang: EditorLanguage) {
     if (lang === "json") return json();
     if (lang === "yaml") return yaml();
+    if (lang === "xml") return xml();
     return [];
   }
 

@@ -16,6 +16,10 @@ export type ZField = {
   key: string;
   keySrc: SrcRef;
   value: ZValue;
+  /** XML-specific tag, set only by the XML parser.  "attribute" → emit
+   *  `xml_attribute` in the serde block; "text" → text-node fallback with
+   *  a TODO comment.  Other parsers leave it undefined. */
+  xml?: { kind: "attribute" | "text" };
 };
 
 export type ZValue = ZNull | ZBool | ZInt | ZFloat | ZString | ZArray | ZObject;

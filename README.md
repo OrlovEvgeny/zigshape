@@ -1,8 +1,8 @@
 # zigshape
 
-Zig schema/struct generator for real-world data formats. Generates idiomatic Zig structs from JSON, YAML and TOML, with first-class `serde.zig` support. Web playground + CLI.
+Zig schema/struct generator for real-world data formats. Generates idiomatic Zig structs from JSON, YAML, TOML and XML, with first-class `serde.zig` support. Web playground + CLI.
 
-> **Status: v0.2 — multi-format input, smarter inference.** XML is roadmap (v0.3); VS Code extension is v0.4.
+> **Status: v0.3 — XML input with `xml_root` / `xml_attribute` decoration.** VS Code extension is v0.4.
 
 ## Layout
 
@@ -15,16 +15,16 @@ packages/
   serde-zig/    serde.zig output adapter
 ```
 
-## Supported formats (v0.2)
+## Supported formats (v0.3)
 
 | Format | Status | Notes |
 |--------|--------|-------|
 | JSON   | full   | JSONC tolerated. Source ranges plumbed through to the field inspector. |
 | YAML   | full   | Anchors, aliases and `<<` merge keys resolved. Multi-document warns + uses first. |
 | TOML   | full   | Tables, arrays of tables, inline tables. Source ranges are whole-document only (smol-toml limitation). |
-| XML    | v0.3   | Planned with `xml_root` / `xml_attribute` mapping. |
+| XML    | full   | Attributes vs child elements distinguished; `xml_root` / `xml_attribute` emitted on the serde-zig target. Namespace prefixes stripped (warns). Mixed content (attributes + text) emits a `value` field with a TODO comment, since serde.zig doesn't document `xml_text`. Whole-document source ranges only. |
 
-Auto-detection works for all three; pass `--format` to override.
+Auto-detection works for all four; pass `--format` to override.
 
 ## Develop
 
@@ -45,7 +45,7 @@ bun apps/cli/src/main.ts <file> --root User --target serde-zig
 
 ```
 zigshape [files...]
-  [--format auto|json|yaml|toml]      input format; default auto
+  [--format auto|json|yaml|toml|xml]  input format; default auto
   [--int smallest|u64|i64]            integer width strategy; default smallest
   [--enums auto|off|always]           enum suggestion; default auto
   [--unions off|tagged]               tagged-union inference; default off
@@ -63,7 +63,7 @@ Several files merge as samples of the same shape — fields appearing in only so
 
 The toolbar exposes the same options as **presets**: *API response* (smallest int + auto enums), *Strict config* (u64 + defaults-from-samples), *Loose schema* (everything wide). Format auto-detect runs as you type; the dropdown shows what was picked.
 
-WASM zig fmt is CLI-only in v0.2 (Vite bundling for the `@wasm-fmt/zig_fmt` source-phase WASM import is unresolved).
+WASM zig fmt is CLI-only (Vite bundling for the `@wasm-fmt/zig_fmt` source-phase WASM import is unresolved on the web side).
 
 ## Pipeline
 
@@ -77,7 +77,6 @@ See `docs/inference.md` for what triggers each shape decision.
 
 ## Roadmap
 
-- v0.3 — XML input with `xml_root` / `xml_attribute`, mixed-content warnings.
 - v0.4 — VS Code extension ("Paste JSON as Zig").
 - v1.0 — alias detection across samples, schema drift CI, hosted share links, per-field overrides.
 

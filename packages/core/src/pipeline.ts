@@ -25,6 +25,7 @@ export function runPipeline({ samples, rootName, inferOptions }: PipelineInput):
   const options = withDefaults(inferOptions);
   const formatOpt = options.format;
   const detectedFormats = new Set<string>();
+  const xmlRoots: string[] = [];
 
   for (let i = 0; i < samples.length; i++) {
     const sampleText = samples[i] ?? "";
@@ -34,6 +35,20 @@ export function runPipeline({ samples, rootName, inferOptions }: PipelineInput):
     const r = parseSample(sampleText, i, formatOpt);
     for (const d of r.diagnostics.toArray()) all.push(d);
     if (r.value && !r.diagnostics.hasErrors()) values.push(r.value);
+    if (r.xmlRoot !== undefined) xmlRoots.push(r.xmlRoot);
+  }
+
+  let xmlRootElement: string | undefined;
+  if (xmlRoots.length > 0) {
+    const unique = new Set(xmlRoots);
+    if (unique.size === 1) {
+      xmlRootElement = xmlRoots[0];
+    } else {
+      all.warn(
+        "pipeline.xml_mixed_root",
+        `Samples have different XML root elements (${[...unique].join(", ")}); xml_root decoration omitted`,
+      );
+    }
   }
 
   if (formatOpt === "auto" && detectedFormats.size > 1) {
@@ -56,6 +71,7 @@ export function runPipeline({ samples, rootName, inferOptions }: PipelineInput):
     intStrategy: options.intStrategy,
     defaultsFromSamples: options.defaultsFromSamples,
     observations,
+    xmlRootElement,
   });
   return { normalized, warnings: all.toArray() };
 }

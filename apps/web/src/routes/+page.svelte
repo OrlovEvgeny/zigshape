@@ -36,13 +36,11 @@
   });
 
   const editorLanguage: EditorLanguage = $derived(
-    format === "json" || format === "yaml"
+    format === "json" || format === "yaml" || format === "xml"
       ? format
-      : format === "auto" && detectedFormat === "json"
-        ? "json"
-        : format === "auto" && detectedFormat === "yaml"
-          ? "yaml"
-          : "plain",
+      : format === "auto" && (detectedFormat === "json" || detectedFormat === "yaml" || detectedFormat === "xml")
+        ? detectedFormat
+        : "plain",
   );
 
   const presetOptions = $derived(

@@ -20,6 +20,11 @@ export type ZigField = {
   observedCount: number;
   parentTotal: number;
   optionalReason?: string;
+  /** XML-specific tag carried from the parser.  "attribute" → emit field
+   *  in the struct's `xml_attribute = .{ ... }` list.  "text" → drives the
+   *  text-node TODO comment in the serde decorator.  Plain target ignores
+   *  it. */
+  xml?: "attribute" | "text";
 };
 
 export type StructDecl = {
@@ -79,6 +84,10 @@ export type NormalizeResult = {
   /** Top-level declarations in DFS order (root first when applicable). */
   decls: Decl[];
   needsStd: boolean;
+  /** XML root element name from the parser, plumbed through so the
+   *  serde-zig decorator can emit `.xml_root = "<name>"` on the root struct.
+   *  Undefined for non-XML inputs. */
+  xmlRootElement?: string;
 };
 
 export type IntStrategy = "smallest" | "u64" | "i64";
@@ -91,6 +100,8 @@ export type NormalizeOptions = {
    *  Requires `observations` to be supplied. */
   defaultsFromSamples?: boolean;
   observations?: ObservationMap;
+  /** XML root element name forwarded from the parser for xml_root emission. */
+  xmlRootElement?: string;
 };
 
 type NormalizeState = {
@@ -123,6 +134,7 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     rootType,
     decls: state.decls,
     needsStd: state.needsStd,
+    xmlRootElement: options.xmlRootElement,
   };
 }
 
@@ -300,6 +312,7 @@ function buildField(
     observedCount: fieldShape.observedCount,
     parentTotal: fieldShape.parentTotal,
     optionalReason: fieldShape.optionalReason,
+    xml: fieldShape.xml,
   };
 }
 

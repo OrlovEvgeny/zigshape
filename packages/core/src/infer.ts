@@ -182,6 +182,7 @@ function inferObject(
       observedCount,
       parentTotal,
       optionalReason,
+      xml: o.childKeyXml?.get(key),
     });
   }
 

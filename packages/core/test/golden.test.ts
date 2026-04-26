@@ -32,6 +32,7 @@ const ROOT_NAMES: Record<string, FixtureCfg> = {
   "enum-with-rename": { rootName: "Task", options: { enums: "always" } },
   "union-commands": { rootName: "Commands", options: { unions: "tagged" } },
   "defaults-config": { rootName: "Cfg", options: { defaultsFromSamples: true } },
+  "xml-user": { rootName: "User" },
 };
 
 /** A fixture is either a single .json file (one sample) or a .samples.json
@@ -44,6 +45,8 @@ function loadSamples(base: string): string[] {
     if (!Array.isArray(arr)) throw new Error(`${base}.samples.json is not an array`);
     return arr.map((s) => JSON.stringify(s));
   }
+  const xmlPath = join(goldenDir, base + ".xml");
+  if (existsSync(xmlPath)) return [readFileSync(xmlPath, "utf8")];
   return [readFileSync(join(goldenDir, base + ".json"), "utf8")];
 }
 
@@ -61,6 +64,7 @@ describe("plain Zig golden fixtures", () => {
   const fixtureBases = new Set<string>();
   for (const f of readdirSync(goldenDir)) {
     if (f.endsWith(".samples.json")) fixtureBases.add(f.replace(/\.samples\.json$/, ""));
+    else if (f.endsWith(".xml")) fixtureBases.add(f.replace(/\.xml$/, ""));
     else if (f.endsWith(".json")) fixtureBases.add(f.replace(/\.json$/, ""));
   }
   expect(fixtureBases.size).toBeGreaterThanOrEqual(6);

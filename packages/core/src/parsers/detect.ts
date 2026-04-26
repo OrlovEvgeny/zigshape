@@ -17,6 +17,11 @@ export function detectFormat(input: string): DetectResult {
 
   const first = trimmed[0]!;
 
+  if (first === "<") {
+    // XML element start or `<?xml ...?>` declaration.  No other supported
+    // format begins with `<` at the top of the document.
+    return { format: "xml", confidence: 0.95, alternatives: [] };
+  }
   if (first === "{") {
     return { format: "json", confidence: 0.95, alternatives: ["yaml"] };
   }

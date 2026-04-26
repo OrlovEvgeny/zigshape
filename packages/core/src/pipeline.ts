@@ -69,6 +69,7 @@ export function runPipeline({ samples, rootName, inferOptions }: PipelineInput):
   const normalized = normalize(root, {
     rootName,
     intStrategy: options.intStrategy,
+    stringStrategy: options.strings,
     defaultsFromSamples: options.defaultsFromSamples,
     observations,
     xmlRootElement,

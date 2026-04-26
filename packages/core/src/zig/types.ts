@@ -1,10 +1,11 @@
 export type ZigIntWidth = "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64";
+export type ZigStringRepr = "slice" | "mut" | "sentinel";
 
 export type ZigType =
   | { kind: "bool" }
   | { kind: "int"; width: ZigIntWidth }
   | { kind: "f64" }
-  | { kind: "string" }
+  | { kind: "string"; repr?: ZigStringRepr }
   | { kind: "slice"; element: ZigType }
   | { kind: "ref"; structName: string }
   | { kind: "stringMap"; value: ZigType }
@@ -20,7 +21,14 @@ export function renderZigType(t: ZigType): string {
     case "f64":
       return "f64";
     case "string":
-      return "[]const u8";
+      switch (t.repr ?? "slice") {
+        case "mut":
+          return "[]u8";
+        case "sentinel":
+          return "[:0]const u8";
+        default:
+          return "[]const u8";
+      }
     case "slice":
       return "[]const " + renderZigType(t.element);
     case "ref":

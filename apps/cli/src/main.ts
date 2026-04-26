@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
 import {
+  buildReport,
+  diffReports,
+  formatDrift,
   generateZig,
   runPipeline,
   type AliasStrategy,
@@ -7,10 +10,14 @@ import {
   type Format,
   type GenerateOptions,
   type IntStrategy,
+  type MapStrategy,
+  type SchemaReport,
+  type StringStrategy,
   type UnionStrategy,
   type ZigshapeOptions,
 } from "@zigshape/core";
 import { serdeDecorator } from "@zigshape/serde-zig";
+import { loadConfig } from "./config";
 
 type Target = "plain" | "serde-zig";
 type FormatArg = "auto" | Format;
@@ -21,6 +28,8 @@ type Args = {
   target: Target;
   format: FormatArg;
   intStrategy: IntStrategy;
+  stringStrategy: StringStrategy;
+  mapStrategy: MapStrategy;
   enums: EnumStrategy;
   unions: UnionStrategy;
   aliases: AliasStrategy;
@@ -28,8 +37,14 @@ type Args = {
   defaultsFromSamples: boolean;
   zigFmt: boolean;
   out: string | null;
+  reportOut: string | null;
+  checkDrift: string | null;
+  config: string | null;
   stdin: boolean;
   help: boolean;
+  /** True iff the user explicitly passed the corresponding flag.  Used so
+   *  config-file values fill in only the gaps, never override explicit CLI. */
+  explicit: Set<keyof Args>;
 };
 
 const HELP = `zigshape — generate Zig structs from JSON / YAML / TOML / XML
@@ -47,9 +62,15 @@ Output options:
   --target plain|serde-zig       Codegen target. Default: plain.
   --out PATH                     Write Zig to PATH instead of stdout.
   --zig-fmt                      Run generated code through zig fmt (WASM).
+  --report PATH                  Write a JSON schema report to PATH.
+  --check-drift PATH             Compare current schema to the report at PATH;
+                                 exit 3 if there is any breaking drift.
+  --config PATH                  Load defaults and overrides from zigshape.json.
 
 Inference options:
   --int smallest|u64|i64         Integer width strategy. Default: smallest.
+  --strings slice|mut|sentinel   String wire form. slice = []const u8 (default).
+  --maps auto|struct|hash-map    Map detection override. Default: auto.
   --enums auto|off|always        Enum suggestion. Default: auto.
   --unions off|tagged            Tagged-union inference. Default: off.
   --aliases auto|off             Cross-sample alias detection. Default: auto.
@@ -71,6 +92,8 @@ function parseArgs(argv: readonly string[]): Args {
     target: "plain",
     format: "auto",
     intStrategy: "smallest",
+    stringStrategy: "slice",
+    mapStrategy: "auto",
     enums: "auto",
     unions: "off",
     aliases: "auto",
@@ -78,8 +101,12 @@ function parseArgs(argv: readonly string[]): Args {
     defaultsFromSamples: false,
     zigFmt: false,
     out: null,
+    reportOut: null,
+    checkDrift: null,
+    config: null,
     stdin: false,
     help: false,
+    explicit: new Set(),
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -91,6 +118,7 @@ function parseArgs(argv: readonly string[]): Args {
     switch (flag) {
       case "--root":
         args.rootName = next() ?? args.rootName;
+        args.explicit.add("rootName");
         break;
       case "--target": {
         const t = next() as Target | undefined;
@@ -98,6 +126,7 @@ function parseArgs(argv: readonly string[]): Args {
           throw new Error(`--target must be 'plain' or 'serde-zig' (got '${t}')`);
         }
         args.target = t;
+        args.explicit.add("target");
         break;
       }
       case "--format": {
@@ -106,6 +135,7 @@ function parseArgs(argv: readonly string[]): Args {
           throw new Error(`--format must be auto|json|yaml|toml|xml (got '${f}')`);
         }
         args.format = f;
+        args.explicit.add("format");
         break;
       }
       case "--int": {
@@ -114,6 +144,25 @@ function parseArgs(argv: readonly string[]): Args {
           throw new Error(`--int must be smallest|u64|i64 (got '${v}')`);
         }
         args.intStrategy = v;
+        args.explicit.add("intStrategy");
+        break;
+      }
+      case "--strings": {
+        const v = next() as StringStrategy | undefined;
+        if (v !== "slice" && v !== "mut" && v !== "sentinel") {
+          throw new Error(`--strings must be slice|mut|sentinel (got '${v}')`);
+        }
+        args.stringStrategy = v;
+        args.explicit.add("stringStrategy");
+        break;
+      }
+      case "--maps": {
+        const v = next() as MapStrategy | undefined;
+        if (v !== "auto" && v !== "struct" && v !== "hash-map") {
+          throw new Error(`--maps must be auto|struct|hash-map (got '${v}')`);
+        }
+        args.mapStrategy = v;
+        args.explicit.add("mapStrategy");
         break;
       }
       case "--enums": {
@@ -122,6 +171,7 @@ function parseArgs(argv: readonly string[]): Args {
           throw new Error(`--enums must be auto|off|always (got '${v}')`);
         }
         args.enums = v;
+        args.explicit.add("enums");
         break;
       }
       case "--unions": {
@@ -130,6 +180,7 @@ function parseArgs(argv: readonly string[]): Args {
           throw new Error(`--unions must be off|tagged (got '${v}')`);
         }
         args.unions = v;
+        args.explicit.add("unions");
         break;
       }
       case "--aliases": {
@@ -138,19 +189,31 @@ function parseArgs(argv: readonly string[]): Args {
           throw new Error(`--aliases must be auto|off (got '${v}')`);
         }
         args.aliases = v;
+        args.explicit.add("aliases");
         break;
       }
       case "--deny-unknown-fields":
         args.denyUnknownFields = true;
+        args.explicit.add("denyUnknownFields");
         break;
       case "--defaults-from-samples":
         args.defaultsFromSamples = true;
+        args.explicit.add("defaultsFromSamples");
         break;
       case "--zig-fmt":
         args.zigFmt = true;
         break;
       case "--out":
         args.out = next() ?? null;
+        break;
+      case "--report":
+        args.reportOut = next() ?? null;
+        break;
+      case "--check-drift":
+        args.checkDrift = next() ?? null;
+        break;
+      case "--config":
+        args.config = next() ?? null;
         break;
       case "--stdin":
         args.stdin = true;
@@ -188,6 +251,54 @@ export async function run(argv: readonly string[]): Promise<number> {
     return 0;
   }
 
+  let denyUnknownFields = args.denyUnknownFields;
+  if (args.config) {
+    try {
+      const cfg = await loadConfig(args.config);
+      if (cfg.options) {
+        if (cfg.options.intStrategy !== undefined && !args.explicit.has("intStrategy")) {
+          args.intStrategy = cfg.options.intStrategy;
+        }
+        if (cfg.options.strings !== undefined && !args.explicit.has("stringStrategy")) {
+          args.stringStrategy = cfg.options.strings;
+        }
+        if (cfg.options.maps !== undefined && !args.explicit.has("mapStrategy")) {
+          args.mapStrategy = cfg.options.maps;
+        }
+        if (cfg.options.enums !== undefined && !args.explicit.has("enums")) {
+          args.enums = cfg.options.enums;
+        }
+        if (cfg.options.unions !== undefined && !args.explicit.has("unions")) {
+          args.unions = cfg.options.unions;
+        }
+        if (cfg.options.aliases !== undefined && !args.explicit.has("aliases")) {
+          args.aliases = cfg.options.aliases;
+        }
+        if (cfg.options.format !== undefined && !args.explicit.has("format")) {
+          args.format = cfg.options.format;
+        }
+        if (
+          cfg.options.defaultsFromSamples !== undefined &&
+          !args.explicit.has("defaultsFromSamples")
+        ) {
+          args.defaultsFromSamples = cfg.options.defaultsFromSamples;
+        }
+        if (
+          cfg.options.denyUnknownFields !== undefined &&
+          !args.explicit.has("denyUnknownFields")
+        ) {
+          denyUnknownFields = cfg.options.denyUnknownFields;
+        }
+      }
+      if (cfg.serde?.denyUnknownFields !== undefined && !args.explicit.has("denyUnknownFields")) {
+        denyUnknownFields = cfg.serde.denyUnknownFields;
+      }
+    } catch (e) {
+      process.stderr.write(`zigshape: ${(e as Error).message}\n`);
+      return 2;
+    }
+  }
+
   let samples: string[];
   if (args.stdin || args.files.length === 0) {
     samples = [await Bun.stdin.text()];
@@ -198,6 +309,8 @@ export async function run(argv: readonly string[]): Promise<number> {
   const inferOptions: Partial<ZigshapeOptions> = {
     format: args.format,
     intStrategy: args.intStrategy,
+    strings: args.stringStrategy,
+    maps: args.mapStrategy,
     enums: args.enums,
     unions: args.unions,
     aliases: args.aliases,
@@ -229,9 +342,40 @@ export async function run(argv: readonly string[]): Promise<number> {
     return 1;
   }
 
+  if (args.reportOut) {
+    const report = buildReport(normalized, warnings);
+    await Bun.write(args.reportOut, JSON.stringify(report, null, 2) + "\n");
+  }
+
+  if (args.checkDrift) {
+    const next = buildReport(normalized, warnings);
+    let prevText: string;
+    try {
+      prevText = await Bun.file(args.checkDrift).text();
+    } catch (e) {
+      process.stderr.write(`zigshape: cannot read drift baseline ${args.checkDrift}: ${(e as Error).message}\n`);
+      return 2;
+    }
+    let prev: SchemaReport;
+    try {
+      prev = JSON.parse(prevText) as SchemaReport;
+    } catch (e) {
+      process.stderr.write(`zigshape: drift baseline ${args.checkDrift}: ${(e as Error).message}\n`);
+      return 2;
+    }
+    const drift = diffReports(prev, next);
+    if (drift.entries.length > 0) {
+      process.stderr.write(formatDrift(drift) + "\n");
+    }
+    if (drift.hasBreaking) {
+      process.stderr.write("zigshape: breaking schema drift\n");
+      return 3;
+    }
+  }
+
   const opts: GenerateOptions =
     args.target === "serde-zig"
-      ? serdeDecorator(normalized, { denyUnknownFields: args.denyUnknownFields })
+      ? serdeDecorator(normalized, { denyUnknownFields })
       : {};
   let code = generateZig(normalized, opts);
 

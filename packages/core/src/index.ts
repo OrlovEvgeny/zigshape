@@ -48,6 +48,16 @@ export {
   type EnumStrategy,
   type UnionStrategy,
   type AliasStrategy,
+  type StringStrategy,
+  type MapStrategy,
   DEFAULT_OPTIONS,
   withDefaults,
 } from "./options";
+export { buildReport, type SchemaReport, type ReportField, type ReportDecl } from "./report";
+export {
+  diffReports,
+  formatDrift,
+  type DriftEntry,
+  type DriftReport,
+  type DriftSeverity,
+} from "./drift";

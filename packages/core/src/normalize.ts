@@ -1,7 +1,8 @@
 import type { Observation, ObservationMap } from "./observe";
 import type { FieldShape, Shape, UnionVariant } from "./shape";
 import { escapeZigString, sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
-import { pickIntWidth, type ZigType } from "./zig/types";
+import { pickIntWidth, type ZigStringRepr, type ZigType } from "./zig/types";
+import type { StringStrategy } from "./options";
 
 export type ZigField = {
   /** Identifier as it appears in Zig source (may be `@"…"`). */
@@ -99,6 +100,7 @@ export type IntStrategy = "smallest" | "u64" | "i64";
 export type NormalizeOptions = {
   rootName: string;
   intStrategy?: IntStrategy;
+  stringStrategy?: StringStrategy;
   /** When true, non-optional scalar fields whose observations contain a single
    *  value get that value emitted as a Zig default (e.g. `port: u16 = 3000`).
    *  Requires `observations` to be supplied. */
@@ -113,6 +115,7 @@ type NormalizeState = {
   usedTypeNames: Set<string>;
   needsStd: boolean;
   intStrategy: IntStrategy;
+  stringRepr: ZigStringRepr;
   defaultsFromSamples: boolean;
   observations?: ObservationMap;
 };
@@ -123,6 +126,7 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     usedTypeNames: new Set(),
     needsStd: false,
     intStrategy: options.intStrategy ?? "smallest",
+    stringRepr: options.stringStrategy ?? "slice",
     defaultsFromSamples: options.defaultsFromSamples ?? false,
     observations: options.observations,
   };
@@ -147,7 +151,7 @@ function walkShape(shape: Shape, hint: string, state: NormalizeState, fromArrayE
     case "bool":
       return { kind: "bool" };
     case "string":
-      return { kind: "string" };
+      return { kind: "string", repr: state.stringRepr };
     case "int":
       return { kind: "int", width: pickIntWidth(shape.min, shape.max, state.intStrategy) };
     case "float":

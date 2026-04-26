@@ -188,11 +188,7 @@ function inferObject(
 
   if (opts.aliases !== "off") inferAliases(path, fields, o, diag);
 
-  if (
-    fields.size >= opts.mapMinKeys &&
-    looksDynamic(o) &&
-    allFieldShapesEqual(fields)
-  ) {
+  if (shouldEmitMap(opts, fields, o)) {
     const first = [...fields.values()][0]!;
     diag.warn(
       "infer.map_candidate",
@@ -203,6 +199,19 @@ function inferObject(
   }
 
   return { kind: "object", path, fields };
+}
+
+function shouldEmitMap(
+  opts: ZigshapeOptions,
+  fields: Map<string, FieldShape>,
+  o: Observation,
+): boolean {
+  if (opts.maps === "struct") return false;
+  if (fields.size === 0) return false;
+  if (!allFieldShapesEqual(fields)) return false;
+  if (opts.maps === "hash-map") return fields.size >= 2;
+  // auto
+  return fields.size >= opts.mapMinKeys && looksDynamic(o);
 }
 
 /** Greedy alias detection.  For sibling optional fields with structurally

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://zigshape.dev/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://zigshape.dev/json-to-zig-struct</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zigshape.dev/yaml-to-zig-struct</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zigshape.dev/toml-to-zig-struct</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zigshape.dev/xml-to-zig-struct</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zigshape.dev/json-to-serde-zig</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zigshape.dev/yaml-to-serde-zig</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zigshape.dev/toml-to-serde-zig</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zigshape.dev/xml-to-serde-zig</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+</urlset>

@@ -19,6 +19,10 @@ const FIXTURES: Record<string, FixtureCfg> = {
   "enum-rename": { rootName: "Task", options: { enums: "always" } },
   "union-commands": { rootName: "Commands", options: { unions: "tagged" } },
   "xml-user": { rootName: "User" },
+  // The "ideal output" example from the original product spec — locks the
+  // public-facing serde.zig output so future inference / formatter changes
+  // can't silently drift.
+  "spec-ideal": { rootName: "User" },
 };
 
 function loadSamples(base: string): string[] {

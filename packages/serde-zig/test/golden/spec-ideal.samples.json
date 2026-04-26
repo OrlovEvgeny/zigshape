@@ -1,0 +1,21 @@
+[
+  {
+    "userId": 1,
+    "firstName": "Alice",
+    "email": "alice@example.com",
+    "roles": ["admin", "user"],
+    "profile": {
+      "created_at": "2026-04-24T10:00:00Z",
+      "active": true
+    }
+  },
+  {
+    "userId": 2,
+    "firstName": "Bob",
+    "roles": ["user"],
+    "profile": {
+      "created_at": null,
+      "active": false
+    }
+  }
+]

@@ -173,6 +173,27 @@ describe("cli", () => {
     expect(r.stdout).toContain("status: []const u8");
   });
 
+  test("--defaults-from-samples emits observed scalars as defaults", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "toml", "--defaults-from-samples", "--root", "Cfg"],
+      'title = "myapp"\nport = 3000\ndebug = false',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('title: []const u8 = "myapp"');
+    expect(r.stdout).toContain("port: u16 = 3000");
+    expect(r.stdout).toContain("debug: bool = false");
+  });
+
+  test("without --defaults-from-samples no defaults are emitted on a singleton config", async () => {
+    const r = await runCli(
+      ["--stdin", "--format", "toml", "--root", "Cfg"],
+      'title = "myapp"\nport = 3000',
+    );
+    expect(r.code).toBe(0);
+    expect(r.stdout).not.toContain('= "myapp"');
+    expect(r.stdout).not.toContain("= 3000");
+  });
+
   test("--zig-fmt produces idempotent output", async () => {
     const r = await runCli(
       ["--stdin", "--zig-fmt", "--root", "User"],

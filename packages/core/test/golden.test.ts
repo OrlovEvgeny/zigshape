@@ -31,6 +31,7 @@ const ROOT_NAMES: Record<string, FixtureCfg> = {
   "enum-status": { rootName: "User" },
   "enum-with-rename": { rootName: "Task", options: { enums: "always" } },
   "union-commands": { rootName: "Commands", options: { unions: "tagged" } },
+  "defaults-config": { rootName: "Cfg", options: { defaultsFromSamples: true } },
 };
 
 /** A fixture is either a single .json file (one sample) or a .samples.json

@@ -51,6 +51,11 @@ export function runPipeline({ samples, rootName, inferOptions }: PipelineInput):
   const { root, diagnostics: inferDiag } = infer(observations, options);
   for (const d of inferDiag.toArray()) all.push(d);
 
-  const normalized = normalize(root, { rootName, intStrategy: options.intStrategy });
+  const normalized = normalize(root, {
+    rootName,
+    intStrategy: options.intStrategy,
+    defaultsFromSamples: options.defaultsFromSamples,
+    observations,
+  });
   return { normalized, warnings: all.toArray() };
 }

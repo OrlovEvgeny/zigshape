@@ -88,4 +88,16 @@ describe("observeSamples", () => {
     expect(obs.get("$.a")!.firstSrc).toBeDefined();
     expect(obs.get("$.a")!.firstSrc!.sample).toBe(0);
   });
+
+  test("bool true/false counts tracked separately", () => {
+    const obs = observeSamples(
+      parseAll('{"a": true, "b": false}', '{"a": true, "b": true}'),
+    );
+    const a = obs.get("$.a")!;
+    expect(a.boolTrue).toBe(2);
+    expect(a.boolFalse).toBeUndefined();
+    const b = obs.get("$.b")!;
+    expect(b.boolTrue).toBe(1);
+    expect(b.boolFalse).toBe(1);
+  });
 });

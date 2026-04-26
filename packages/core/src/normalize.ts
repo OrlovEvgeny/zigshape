@@ -1,5 +1,6 @@
+import type { Observation, ObservationMap } from "./observe";
 import type { FieldShape, Shape, UnionVariant } from "./shape";
-import { sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
+import { escapeZigString, sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
 import { pickIntWidth, type ZigType } from "./zig/types";
 
 export type ZigField = {
@@ -85,6 +86,11 @@ export type IntStrategy = "smallest" | "u64" | "i64";
 export type NormalizeOptions = {
   rootName: string;
   intStrategy?: IntStrategy;
+  /** When true, non-optional scalar fields whose observations contain a single
+   *  value get that value emitted as a Zig default (e.g. `port: u16 = 3000`).
+   *  Requires `observations` to be supplied. */
+  defaultsFromSamples?: boolean;
+  observations?: ObservationMap;
 };
 
 type NormalizeState = {
@@ -92,6 +98,8 @@ type NormalizeState = {
   usedTypeNames: Set<string>;
   needsStd: boolean;
   intStrategy: IntStrategy;
+  defaultsFromSamples: boolean;
+  observations?: ObservationMap;
 };
 
 export function normalize(root: Shape, options: NormalizeOptions): NormalizeResult {
@@ -100,6 +108,8 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     usedTypeNames: new Set(),
     needsStd: false,
     intStrategy: options.intStrategy ?? "smallest",
+    defaultsFromSamples: options.defaultsFromSamples ?? false,
+    observations: options.observations,
   };
   // When root is non-object, the generator emits a top-level alias
   // `pub const <rootName> = <rootType>;`.  Reserve the name now so any inner
@@ -268,6 +278,15 @@ function buildField(
   if (fieldShape.optional) {
     type = { kind: "optional", inner: type };
     defaultExpr = "null";
+  } else if (state.defaultsFromSamples && state.observations) {
+    const k = fieldShape.shape.kind;
+    if (k === "bool" || k === "int" || k === "string") {
+      const o = state.observations.get(fieldShape.path);
+      if (o) {
+        const lit = scalarSingletonLiteral(o, k);
+        if (lit !== undefined) defaultExpr = lit;
+      }
+    }
   }
 
   return {
@@ -282,6 +301,31 @@ function buildField(
     parentTotal: fieldShape.parentTotal,
     optionalReason: fieldShape.optionalReason,
   };
+}
+
+function scalarSingletonLiteral(
+  o: Observation,
+  kind: "bool" | "int" | "string",
+): string | undefined {
+  switch (kind) {
+    case "string": {
+      if (!o.stringSamples || o.stringSamples.size !== 1) return undefined;
+      const value = [...o.stringSamples.keys()][0]!;
+      return `"${escapeZigString(value)}"`;
+    }
+    case "int": {
+      if (o.intMin === undefined || o.intMax === undefined) return undefined;
+      if (o.intMin !== o.intMax) return undefined;
+      return o.intMin.toString();
+    }
+    case "bool": {
+      const t = o.boolTrue ?? 0;
+      const f = o.boolFalse ?? 0;
+      if (t > 0 && f === 0) return "true";
+      if (f > 0 && t === 0) return "false";
+      return undefined;
+    }
+  }
 }
 
 function uniqify(used: ReadonlySet<string>, base: string): string {

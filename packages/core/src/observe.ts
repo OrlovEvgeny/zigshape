@@ -23,6 +23,10 @@ export type Observation = {
   stringSamples?: Map<string, number>;
   stringSamplesOverflowed?: boolean;
   stringFirstSrcByValue?: Map<string, SrcRef>;
+  // bool kind specifics — used by defaults-from-samples to recognise singleton
+  // observations (all true / all false).
+  boolTrue?: number;
+  boolFalse?: number;
   // Object items observed at this path (only populated when this path is an
   // array element).  Used by tagged-union inference, which re-groups items by
   // discriminator value.  Capped to bound memory on huge inputs.
@@ -69,6 +73,10 @@ function observe(value: ZValue, path: string, map: ObservationMap): void {
     case "int":
       o.intMin = o.intMin === undefined ? value.value : (value.value < o.intMin ? value.value : o.intMin);
       o.intMax = o.intMax === undefined ? value.value : (value.value > o.intMax ? value.value : o.intMax);
+      break;
+    case "bool":
+      if (value.value) o.boolTrue = (o.boolTrue ?? 0) + 1;
+      else o.boolFalse = (o.boolFalse ?? 0) + 1;
       break;
     case "string": {
       o.stringSamples ??= new Map();

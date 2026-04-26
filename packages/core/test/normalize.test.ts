@@ -6,13 +6,25 @@ import { normalize, type Decl, type StructDecl } from "../src/normalize";
 import { renderZigType } from "../src/zig/types";
 
 function norm(rootName: string, ...samples: string[]) {
+  return normWith({ rootName }, ...samples);
+}
+
+function normWith(
+  opts: { rootName: string; defaultsFromSamples?: boolean },
+  ...samples: string[]
+) {
   const values = samples.map((s, i) => {
     const r = parseSample(s, i);
     if (!r.value) throw new Error("parse fail");
     return r.value;
   });
-  const { root } = infer(observeSamples(values));
-  const result = normalize(root, { rootName });
+  const observations = observeSamples(values);
+  const { root } = infer(observations);
+  const result = normalize(root, {
+    rootName: opts.rootName,
+    defaultsFromSamples: opts.defaultsFromSamples,
+    observations: opts.defaultsFromSamples ? observations : undefined,
+  });
   return {
     ...result,
     structAt(i: number): StructDecl {
@@ -137,5 +149,60 @@ describe("normalize", () => {
     const r = norm("Users", '[{"id": 1}, {"id": 2}]');
     expect(renderZigType(r.rootType)).toBe("[]const User");
     expect(r.decls.map((d) => d.name)).toEqual(["User"]);
+  });
+});
+
+describe("normalize defaultsFromSamples", () => {
+  test("singleton string emits string-literal default", () => {
+    const r = normWith(
+      { rootName: "Cfg", defaultsFromSamples: true },
+      '{"title": "myapp", "port": 3000}',
+    );
+    const f = r.structAt(0).fields.find((f) => f.name === "title")!;
+    expect(f.defaultExpr).toBe('"myapp"');
+  });
+
+  test("singleton int emits numeric default", () => {
+    const r = normWith(
+      { rootName: "Cfg", defaultsFromSamples: true },
+      '{"title": "myapp", "port": 3000}',
+    );
+    const f = r.structAt(0).fields.find((f) => f.name === "port")!;
+    expect(f.defaultExpr).toBe("3000");
+  });
+
+  test("all-false bool emits false default", () => {
+    const r = normWith(
+      { rootName: "Cfg", defaultsFromSamples: true },
+      '{"debug": false}',
+      '{"debug": false}',
+    );
+    const f = r.structAt(0).fields.find((f) => f.name === "debug")!;
+    expect(f.defaultExpr).toBe("false");
+  });
+
+  test("optional field still defaults to null even with a singleton", () => {
+    const r = normWith(
+      { rootName: "User", defaultsFromSamples: true },
+      '{"id": 1, "email": "a@b"}',
+      '{"id": 2}',
+    );
+    const f = r.structAt(0).fields.find((f) => f.name === "email")!;
+    expect(f.defaultExpr).toBe("null");
+  });
+
+  test("multiple distinct values emit no default", () => {
+    const r = normWith(
+      { rootName: "Cfg", defaultsFromSamples: true },
+      '{"title": "a"}',
+      '{"title": "b"}',
+    );
+    const f = r.structAt(0).fields[0]!;
+    expect(f.defaultExpr).toBeUndefined();
+  });
+
+  test("flag off: no default even with singleton observation", () => {
+    const r = norm("Cfg", '{"port": 3000}');
+    expect(r.structAt(0).fields[0]!.defaultExpr).toBeUndefined();
   });
 });

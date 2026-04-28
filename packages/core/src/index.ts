@@ -51,6 +51,12 @@ export {
 export { renderZigType, type ZigType, type ZigIntWidth, pickIntWidth } from "./zig/types";
 export { escapeZigString, sanitizeFieldName, sanitizeStructName, toSnakeCase, toPascalCase, singularize } from "./zig/identifier";
 export { generateZig, type GenerateOptions } from "./generate";
+export {
+  emitParserHelper,
+  emitTestScaffold,
+  emitBuildSnippet,
+  type SnippetTarget,
+} from "./zig/snippets";
 export { runPipeline, type PipelineInput, type PipelineResult } from "./pipeline";
 export {
   type ZigshapeOptions,

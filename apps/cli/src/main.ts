@@ -2,6 +2,9 @@
 import {
   buildReport,
   diffReports,
+  emitBuildSnippet,
+  emitParserHelper,
+  emitTestScaffold,
   formatDrift,
   generateZig,
   runPipeline,
@@ -40,6 +43,9 @@ type Args = {
   denyUnknownFields: boolean;
   samplesFromArray: boolean;
   defaultsFromSamples: boolean;
+  withParser: boolean;
+  withTests: boolean;
+  withBuildSnippet: boolean;
   zigFmt: boolean;
   out: string | null;
   reportOut: string | null;
@@ -75,6 +81,14 @@ Output options:
   --check-drift PATH             Compare current schema to the report at PATH;
                                  exit 3 if there is any breaking drift.
   --config PATH                  Load defaults and overrides from zigshape.json.
+  --with-parser                  Append a parse<Root>(...) helper that wraps
+                                 std.json.parseFromSlice or
+                                 serde.<format>.fromSlice for the resolved
+                                 input format.
+  --with-tests                   Append a test "parse <Root>" scaffold using
+                                 the first sample as input.
+  --with-build-snippet           Prepend a build.zig comment block describing
+                                 dependency wiring (no-op for plain target).
 
 Inference options:
   --int smallest|u64|i64         Integer width strategy. Default: smallest.
@@ -124,6 +138,9 @@ function parseArgs(argv: readonly string[]): Args {
     denyUnknownFields: false,
     samplesFromArray: false,
     defaultsFromSamples: false,
+    withParser: false,
+    withTests: false,
+    withBuildSnippet: false,
     zigFmt: false,
     out: null,
     reportOut: null,
@@ -272,6 +289,18 @@ function parseArgs(argv: readonly string[]): Args {
       case "--defaults-from-samples":
         args.defaultsFromSamples = true;
         args.explicit.add("defaultsFromSamples");
+        break;
+      case "--with-parser":
+        args.withParser = true;
+        args.explicit.add("withParser");
+        break;
+      case "--with-tests":
+        args.withTests = true;
+        args.explicit.add("withTests");
+        break;
+      case "--with-build-snippet":
+        args.withBuildSnippet = true;
+        args.explicit.add("withBuildSnippet");
         break;
       case "--zig-fmt":
         args.zigFmt = true;
@@ -431,7 +460,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     defaultsFromSamples: args.defaultsFromSamples,
   };
 
-  const { normalized, warnings } = runPipeline({
+  const { normalized, warnings, resolvedFormat } = runPipeline({
     samples,
     rootName: args.rootName,
     inferOptions,
@@ -498,6 +527,38 @@ export async function run(argv: readonly string[]): Promise<number> {
         })
       : {};
   let code = generateZig(normalized, opts);
+
+  // Append snippets after struct codegen so `zig fmt` (which runs next)
+  // sees the entire file.  The build.zig snippet is a comment block; we
+  // prepend it so it's the first thing a reader sees.
+  if (args.withParser || args.withTests || args.withBuildSnippet) {
+    // resolvedFormat is null only when samples disagreed (mixed_formats
+    // already exited above) or when the run had no samples.  In those
+    // edge cases default to JSON — it's the most common shape and the
+    // user can adjust manually.
+    const fmt: Format = resolvedFormat ?? "json";
+    const stdParseable = fmt === "json" || fmt === "ndjson";
+    const snippetUsesStd =
+      (args.withParser && (args.target === "serde-zig" || stdParseable)) ||
+      (args.withTests && (args.target === "serde-zig" || stdParseable));
+    const snippetUsesSerde =
+      args.target === "serde-zig" && (args.withParser || args.withTests);
+    if (snippetUsesStd && !code.includes('@import("std")')) {
+      code = 'const std = @import("std");\n' + code;
+    }
+    if (snippetUsesSerde && !code.includes('@import("serde")')) {
+      code = 'const serde = @import("serde");\n' + code;
+    }
+    if (args.withParser) {
+      code += emitParserHelper(args.rootName, args.target, fmt);
+    }
+    if (args.withTests && samples.length > 0) {
+      code += emitTestScaffold(args.rootName, samples[0]!.trim(), args.target, fmt);
+    }
+    if (args.withBuildSnippet) {
+      code = emitBuildSnippet(args.target) + code;
+    }
+  }
 
   if (args.zigFmt) {
     try {

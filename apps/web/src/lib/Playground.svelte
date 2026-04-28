@@ -15,7 +15,11 @@
     ShareTooLargeError,
   } from "$lib/share";
   import {
+    buildReport,
     detectFormat,
+    emitBuildSnippet,
+    emitParserHelper,
+    emitTestScaffold,
     generateZig,
     parseSample,
     pathSrcMap,
@@ -24,6 +28,7 @@
     type Diagnostic,
     type FieldOverride,
     type Format,
+    type NormalizeResult,
     type Overrides,
     type SrcRef,
   } from "@zigshape/core";
@@ -86,18 +91,32 @@
   const generated = $derived.by(() => {
     const nonEmpty = samples.filter((s) => s.trim().length > 0);
     if (nonEmpty.length === 0) {
-      return { code: "", warnings: [] as Diagnostic[], decls: [] as Decl[] };
+      return {
+        code: "",
+        warnings: [] as Diagnostic[],
+        decls: [] as Decl[],
+        normalized: null as NormalizeResult | null,
+        resolvedFormat: null as Format | null,
+      };
     }
-    const { normalized, warnings } = runPipeline({
+    const { normalized, warnings, resolvedFormat } = runPipeline({
       samples: nonEmpty,
       rootName,
       inferOptions: { ...presetOptions, format },
       overrides,
     });
-    if (!normalized) return { code: "", warnings, decls: [] as Decl[] };
+    if (!normalized) {
+      return {
+        code: "",
+        warnings,
+        decls: [] as Decl[],
+        normalized: null,
+        resolvedFormat,
+      };
+    }
     const opts = target === "serde-zig" ? serdeDecorator(normalized) : {};
     const code = generateZig(normalized, opts);
-    return { code, warnings, decls: normalized.decls };
+    return { code, warnings, decls: normalized.decls, normalized, resolvedFormat };
   });
 
   const displayCode = $derived(formattedCode ?? generated.code);
@@ -180,17 +199,54 @@
   }
 
   function downloadZig() {
-    const code = displayCode;
-    if (!code) return;
-    const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+    downloadBlob(displayCode || "", `${rootName || "Root"}.zig`, "text/plain");
+  }
+
+  function downloadBlob(content: string, filename: string, mime: string) {
+    if (!content) return;
+    const blob = new Blob([content], { type: mime + ";charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${rootName || "Root"}.zig`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  // The four output-variant buttons.  Each builds its content from the
+  // current generated state so a stale value can never leak into the
+  // clipboard / download.  Format defaults to JSON when the pipeline
+  // hasn't resolved one yet (no samples or mixed) — matches CLI.
+  async function copyParser() {
+    if (!generated.normalized) return;
+    const fmt: Format = generated.resolvedFormat ?? "json";
+    await copyWithFallback(emitParserHelper(rootName || "Root", target, fmt).trim() + "\n");
+  }
+
+  async function copyBuildSnippet() {
+    await copyWithFallback(emitBuildSnippet(target).trim() + "\n");
+  }
+
+  async function copyTestScaffold() {
+    if (!generated.normalized) return;
+    const sample = (samples[activeIndex] ?? samples[0] ?? "").trim();
+    if (!sample) return;
+    const fmt: Format = generated.resolvedFormat ?? "json";
+    await copyWithFallback(
+      emitTestScaffold(rootName || "Root", sample, target, fmt).trim() + "\n",
+    );
+  }
+
+  function downloadReport() {
+    if (!generated.normalized) return;
+    const report = buildReport(generated.normalized, generated.warnings);
+    downloadBlob(
+      JSON.stringify(report, null, 2) + "\n",
+      `${rootName || "Root"}.schema.json`,
+      "application/json",
+    );
   }
 
   function showShareNotice(msg: string) {
@@ -321,6 +377,10 @@
   onDownload={downloadZig}
   onShareConfig={shareConfig}
   onShareWithSamples={shareWithSamples}
+  onCopyParser={copyParser}
+  onCopyBuildSnippet={copyBuildSnippet}
+  onCopyTestScaffold={copyTestScaffold}
+  onDownloadReport={downloadReport}
   canCopy={!!displayCode}
 />
 

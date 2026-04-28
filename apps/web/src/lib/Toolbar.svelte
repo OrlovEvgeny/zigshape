@@ -17,6 +17,10 @@
     onDownload: () => void;
     onShareConfig: () => void;
     onShareWithSamples: () => void;
+    onCopyParser: () => void;
+    onCopyBuildSnippet: () => void;
+    onCopyTestScaffold: () => void;
+    onDownloadReport: () => void;
     canCopy: boolean;
   };
 
@@ -32,8 +36,14 @@
     onDownload,
     onShareConfig,
     onShareWithSamples,
+    onCopyParser,
+    onCopyBuildSnippet,
+    onCopyTestScaffold,
+    onDownloadReport,
     canCopy,
   }: Props = $props();
+
+  let extrasOpen = $state(false);
 
   let exampleId = $state("");
   let advancedOpen = $state(false);
@@ -91,7 +101,30 @@
   <button type="button" onclick={onDownload} disabled={!canCopy}>Download</button>
   <button type="button" onclick={onShareConfig}>Share config</button>
   <button type="button" onclick={onShareWithSamples}>Share + samples</button>
+  <button
+    type="button"
+    class="more-toggle"
+    onclick={() => (extrasOpen = !extrasOpen)}
+    aria-expanded={extrasOpen}
+  >{extrasOpen ? "Less" : "More…"}</button>
 </div>
+
+{#if extrasOpen}
+  <div class="extras-row">
+    <button type="button" onclick={onCopyParser} disabled={!canCopy}>
+      Copy parse helper
+    </button>
+    <button type="button" onclick={onCopyBuildSnippet}>
+      Copy build.zig snippet
+    </button>
+    <button type="button" onclick={onCopyTestScaffold} disabled={!canCopy}>
+      Copy test scaffold
+    </button>
+    <button type="button" onclick={onDownloadReport} disabled={!canCopy}>
+      Download schema report
+    </button>
+  </div>
+{/if}
 
 {#if currentPreset}
   <p class="preset-desc">{currentPreset.description}
@@ -153,6 +186,23 @@
   }
   .toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
   .toolbar button:hover:not(:disabled) { background: #f3f3f3; }
+  .more-toggle { color: #2a6; }
+  .extras-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.75rem;
+  }
+  .extras-row button {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    border: 1px dashed #ccc;
+    background: #fafafa;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .extras-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .extras-row button:hover:not(:disabled) { background: #efefef; }
   .spacer { flex: 1 1 auto; }
   .example-picker { min-width: 14rem; }
   .preset-desc {

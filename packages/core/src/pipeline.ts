@@ -16,6 +16,11 @@ export type PipelineInput = {
 export type PipelineResult = {
   normalized: NormalizeResult | null;
   warnings: Diagnostic[];
+  /** The single resolved format every sample parsed as.  `null` when samples
+   *  disagreed (`pipeline.mixed_formats` will be in `warnings`) or when no
+   *  sample parsed.  Snippet emitters key off this so e.g. a YAML input
+   *  produces `serde.yaml.fromSlice` instead of the JSON helper. */
+  resolvedFormat: import("./parsers/types").Format | null;
 };
 
 /** Run parse → observe → infer → normalize, collecting diagnostics from every stage.
@@ -88,8 +93,24 @@ export function runPipeline({ samples, rootName, inferOptions, overrides }: Pipe
     );
   }
 
+  // Collapse the resolved format down to one value for downstream
+  // snippet emitters.  When formatOpt is explicit, that's the answer.
+  // Under auto, only single-format runs surface a value; mixed runs return
+  // null (the mixed_formats warning already explains why).
+  let resolvedFormat: import("./parsers/types").Format | null;
+  if (formatOpt === "auto") {
+    resolvedFormat =
+      detectedFormats.size === 1
+        ? ((detectedFormats.values().next().value ?? null) as
+            | import("./parsers/types").Format
+            | null)
+        : null;
+  } else {
+    resolvedFormat = formatOpt;
+  }
+
   if (values.length === 0) {
-    return { normalized: null, warnings: all.toArray() };
+    return { normalized: null, warnings: all.toArray(), resolvedFormat };
   }
 
   const observations = observeSamples(values);
@@ -107,5 +128,5 @@ export function runPipeline({ samples, rootName, inferOptions, overrides }: Pipe
     overrides,
     diagnostics: all,
   });
-  return { normalized, warnings: all.toArray() };
+  return { normalized, warnings: all.toArray(), resolvedFormat };
 }

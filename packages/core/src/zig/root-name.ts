@@ -14,10 +14,10 @@ import type { ZValue } from "../value";
  *    3. Top-level discriminator field: `{ "kind": "Invoice", ... }` →
  *       `Invoice`.  Recognised keys: `__typename`, `_type`, `type`,
  *       `kind` (in priority order).  Value must be a non-empty string.
- *    4. Array of objects at the root: pluralised → singularised.  Only
- *       when (1)–(3) didn't fire and the user opted into samples-from-
- *       array — otherwise we can't tell whether to use the array's
- *       *element* shape or wrap the array.
+ *    4. Array of objects at the root, pluralised, singularised. Only
+ *       fires when 1, 2, 3 didn't and the user opted into
+ *       samples-from-array; otherwise we can't tell whether to use the
+ *       array's element shape or wrap the array.
  *
  *  The return value goes through `sanitizeStructName` so it's always a
  *  legal Zig identifier (PascalCase, no keyword collision). */

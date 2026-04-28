@@ -19,7 +19,7 @@
     <h1>XML to serde.zig</h1>
     <p class="tagline">
       XML documents convert to Zig structs annotated for
-      <a href="https://github.com/getty-zig/serde.zig">serde.zig</a> — including
+      <a href="https://github.com/OrlovEvgeny/serde.zig">serde.zig</a> — including
       <code>xml_root</code> for the document tag and <code>xml_attribute</code> for fields that came in
       as attributes rather than child elements.
     </p>

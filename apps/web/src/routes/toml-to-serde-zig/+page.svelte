@@ -18,7 +18,7 @@
   <header>
     <h1>TOML to serde.zig</h1>
     <p class="tagline">
-      TOML configs turn into Zig structs annotated for <a href="https://github.com/getty-zig/serde.zig">serde.zig</a>.
+      TOML configs turn into Zig structs annotated for <a href="https://github.com/OrlovEvgeny/serde.zig">serde.zig</a>.
       Use the <em>Strict config</em> preset to bake observed scalar values into struct defaults, so
       missing config keys still produce a usable struct.
     </p>

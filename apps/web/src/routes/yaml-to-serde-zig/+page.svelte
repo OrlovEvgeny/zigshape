@@ -18,7 +18,7 @@
   <header>
     <h1>YAML to serde.zig</h1>
     <p class="tagline">
-      YAML configs turn into Zig structs annotated for <a href="https://github.com/getty-zig/serde.zig">serde.zig</a>.
+      YAML configs turn into Zig structs annotated for <a href="https://github.com/OrlovEvgeny/serde.zig">serde.zig</a>.
       Anchors, aliases, and merge keys resolve before inference, so the generated decoration reflects
       the effective document, not the raw text.
     </p>

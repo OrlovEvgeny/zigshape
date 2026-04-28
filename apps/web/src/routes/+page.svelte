@@ -18,7 +18,10 @@
 <main>
   <header>
     <h1>zigshape</h1>
-    <p class="tagline">Generate idiomatic Zig structs from JSON, YAML, TOML, and XML. Built for serde.zig.</p>
+    <p class="tagline">
+      Generate idiomatic Zig structs from JSON, YAML, TOML, and XML. Built for
+      <a href="https://github.com/OrlovEvgeny/serde.zig" target="_blank" rel="noopener noreferrer">serde.zig</a>.
+    </p>
   </header>
 
   <Playground />
@@ -35,6 +38,8 @@
       <a href="/yaml-to-serde-zig">YAML serde.zig</a>
       <a href="/toml-to-serde-zig">TOML serde.zig</a>
       <a href="/xml-to-serde-zig">XML serde.zig</a>
+      ·
+      <a href="https://github.com/OrlovEvgeny/serde.zig" target="_blank" rel="noopener noreferrer">serde.zig on GitHub</a>
     </nav>
   </footer>
 </main>

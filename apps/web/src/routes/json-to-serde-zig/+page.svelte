@@ -19,7 +19,7 @@
     <h1>JSON to serde.zig</h1>
     <p class="tagline">
       The same JSON-to-Zig pipeline, but the output carries a <code>pub const serde = .&lbrace; ... &rbrace;</code>
-      block so <a href="https://github.com/getty-zig/serde.zig">serde.zig</a> can deserialize it directly:
+      block so <a href="https://github.com/OrlovEvgeny/serde.zig">serde.zig</a> can deserialize it directly:
       auto-detected <code>rename_all</code>, alias collapsing for sibling fields that never co-occur, and an
       optional <code>deny_unknown_fields</code> pass via the toolbar's advanced options.
     </p>

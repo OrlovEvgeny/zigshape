@@ -67,12 +67,11 @@
   let samples = $state<string[]>([startExample.samples[0] ?? ""]);
   let activeIndex = $state(0);
   let rootName = $state(initialRootName ?? startExample.rootName);
-  // Track whether the user has hand-edited the rootName input. Until
-  // they do, the smart-suggestion effect below keeps `rootName` in sync
-  // with whatever the parsed sample suggests (XML root tag, single-key
-  // wrapper, kind/type/__typename discriminator). A manual edit pins
-  // it.
-  let rootNameTouched = $state(false);
+  // The rootName starts pinned (the example or initial prop is an
+  // explicit choice). Editing the active sample drops the pin so the
+  // suggestion effect can take over; typing in the toolbar input or
+  // picking a different example pins again.
+  let rootNamePinned = $state(true);
   let target = $state<"plain" | "serde-zig">(initialTarget ?? startExample.target);
   let format = $state<FormatArg>(initialFormat);
   let presetId = $state<PresetId>(initialPreset);
@@ -161,8 +160,22 @@
     });
   });
   $effect(() => {
-    if (rootNameTouched) return;
-    if (suggestedRoot && suggestedRoot !== rootName) rootName = suggestedRoot;
+    if (rootNamePinned) return;
+    const next = suggestedRoot ?? "Root";
+    if (next !== rootName) rootName = next;
+  });
+
+  // Editing the active sample drops the pin so the suggestion takes
+  // over. Tracked via a signature of all samples so multi-tab edits
+  // also unpin. `lastSampleSig` is updated *together* with deliberate
+  // sample mutations (loadExample, share decode) so those don't trigger
+  // an unintended unpin.
+  let lastSampleSig = $state(samples.join(""));
+  $effect(() => {
+    const sig = samples.join("");
+    if (sig === lastSampleSig) return;
+    lastSampleSig = sig;
+    rootNamePinned = false;
   });
 
   // zig fmt always runs in the background — the user shouldn't have to
@@ -197,6 +210,8 @@
     samples = [...e.samples];
     activeIndex = 0;
     rootName = e.rootName;
+    rootNamePinned = true;
+    lastSampleSig = samples.join("");
     target = e.target;
     overrides = {};
   }
@@ -339,9 +354,7 @@
     const decoded = decodeShareHash(window.location.hash);
     if (!decoded) return;
     rootName = decoded.rootName;
-    // Share links carry the user's explicit choice; pin so the auto-suggest
-    // effect doesn't trample it.
-    rootNameTouched = true;
+    rootNamePinned = true;
     target = decoded.target;
     format = decoded.format;
     presetId = decoded.presetId;
@@ -349,6 +362,7 @@
       samples = [...decoded.samples];
       activeIndex = 0;
     }
+    lastSampleSig = samples.join("");
   });
 
   let activeValue = $derived(samples[activeIndex] ?? "");
@@ -372,17 +386,17 @@
     const next = [...samples];
     next[activeIndex] = c.sample;
     samples = next;
+    // Sample changed via curl-paste, which the sample-edit effect would
+    // also catch (and unpin). Update lastSampleSig now so we don't
+    // double-process; if a URL hint exists, pin to that.
+    lastSampleSig = samples.join("");
     if (c.rootHint) {
-      // Avoid overwriting a name the user explicitly chose.  A "default"
-      // rootName is one that still matches an example's rootName, the
-      // empty string, or the literal "Root".
-      const looksDefault =
-        rootName === "" ||
-        rootName === "Root" ||
-        EXAMPLES.some((e) => e.rootName === rootName);
-      if (looksDefault) rootName = c.rootHint;
+      rootName = c.rootHint;
+      rootNamePinned = true;
+    } else {
+      rootNamePinned = false;
     }
-    curlNotice = `Detected curl — extracted body${c.rootHint ? ` and set root to ${c.rootHint}` : ""}.`;
+    curlNotice = `Detected curl. Extracted body${c.rootHint ? ` and set root to ${c.rootHint}` : ""}.`;
     setTimeout(() => { curlNotice = null; }, 2400);
   });
 
@@ -461,7 +475,7 @@
   onCopyBuildSnippet={copyBuildSnippet}
   onCopyTestScaffold={copyTestScaffold}
   onDownloadReport={downloadReport}
-  onRootNameInput={() => (rootNameTouched = true)}
+  onRootNameInput={() => (rootNamePinned = true)}
   suggestedRoot={suggestedRoot}
   canCopy={!!displayCode}
 />

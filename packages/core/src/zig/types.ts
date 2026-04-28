@@ -7,6 +7,8 @@ export type ZigType =
   | { kind: "f64" }
   | { kind: "string"; repr?: ZigStringRepr }
   | { kind: "slice"; element: ZigType }
+  | { kind: "arraylist"; element: ZigType }
+  | { kind: "fixedArray"; length: number; element: ZigType }
   | { kind: "ref"; structName: string }
   | { kind: "stringMap"; value: ZigType }
   | { kind: "json" }
@@ -35,6 +37,10 @@ export function renderZigType(t: ZigType): string {
       }
     case "slice":
       return "[]const " + renderZigType(t.element);
+    case "arraylist":
+      return "std.ArrayList(" + renderZigType(t.element) + ")";
+    case "fixedArray":
+      return "[" + t.length + "]" + renderZigType(t.element);
     case "ref":
       return t.structName;
     case "stringMap":

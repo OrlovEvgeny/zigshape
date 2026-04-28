@@ -1,8 +1,9 @@
+import { DiagnosticBag } from "./diagnostics";
 import type { Observation, ObservationMap } from "./observe";
 import type { FieldShape, Shape, UnionTaggingStyle, UnionVariant } from "./shape";
 import { escapeZigString, sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
 import { pickIntWidth, type ZigStringRepr, type ZigType } from "./zig/types";
-import type { StringStrategy } from "./options";
+import type { ArrayStrategy, StringStrategy } from "./options";
 
 export type ZigField = {
   /** Identifier as it appears in Zig source (may be `@"…"`). */
@@ -123,6 +124,8 @@ export type NormalizeOptions = {
   rootName: string;
   intStrategy?: IntStrategy;
   stringStrategy?: StringStrategy;
+  /** Array codegen strategy.  See `ArrayStrategy`.  Default `"slice"`. */
+  arrayStrategy?: ArrayStrategy;
   /** When true, non-optional scalar fields whose observations contain a single
    *  value get that value emitted as a Zig default (e.g. `port: u16 = 3000`).
    *  Requires `observations` to be supplied. */
@@ -133,6 +136,11 @@ export type NormalizeOptions = {
   /** Per-path field overrides — applied after inference, before the field
    *  type is finalised.  Used by the CLI config file and the web inspector. */
   overrides?: Overrides;
+  /** Optional bag for emitting normalize-time warnings (e.g. fixed-array
+   *  fallback when observations disagree on length).  Pipeline supplies the
+   *  same bag it uses for parse/observe/infer so warnings survive into the
+   *  final result. */
+  diagnostics?: DiagnosticBag;
 };
 
 type NormalizeState = {
@@ -141,9 +149,11 @@ type NormalizeState = {
   needsStd: boolean;
   intStrategy: IntStrategy;
   stringRepr: ZigStringRepr;
+  arrayStrategy: ArrayStrategy;
   defaultsFromSamples: boolean;
   observations?: ObservationMap;
   overrides: Overrides;
+  diagnostics?: DiagnosticBag;
 };
 
 export function normalize(root: Shape, options: NormalizeOptions): NormalizeResult {
@@ -153,9 +163,11 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     needsStd: false,
     intStrategy: options.intStrategy ?? "smallest",
     stringRepr: options.stringStrategy ?? "slice",
+    arrayStrategy: options.arrayStrategy ?? "slice",
     defaultsFromSamples: options.defaultsFromSamples ?? false,
     observations: options.observations,
     overrides: options.overrides ?? {},
+    diagnostics: options.diagnostics,
   };
   // When root is non-object, the generator emits a top-level alias
   // `pub const <rootName> = <rootType>;`.  Reserve the name now so any inner
@@ -190,7 +202,30 @@ function walkShape(shape: Shape, hint: string, state: NormalizeState, fromArrayE
     case "array": {
       const elementHint = singularize(hint);
       const element = walkShape(shape.element, elementHint, state, /*fromArrayElement*/ true);
-      return { kind: "slice", element };
+      switch (state.arrayStrategy) {
+        case "arraylist":
+          state.needsStd = true;
+          return { kind: "arraylist", element };
+        case "fixed": {
+          const o = state.observations?.get(shape.path);
+          if (
+            o &&
+            o.arrayMinLen !== undefined &&
+            o.arrayMaxLen !== undefined &&
+            o.arrayMinLen === o.arrayMaxLen
+          ) {
+            return { kind: "fixedArray", length: o.arrayMinLen, element };
+          }
+          state.diagnostics?.warn(
+            "infer.fixed_length_unstable",
+            `Array at ${shape.path} has variable length across samples (min=${o?.arrayMinLen ?? "?"}, max=${o?.arrayMaxLen ?? "?"}); --arrays fixed fell back to []const T`,
+            { path: shape.path },
+          );
+          return { kind: "slice", element };
+        }
+        default:
+          return { kind: "slice", element };
+      }
     }
     case "map": {
       state.needsStd = true;

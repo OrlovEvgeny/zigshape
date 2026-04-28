@@ -91,6 +91,26 @@ Independent of enum suggestion, `infer.string_shape` fires whenever every observ
 
 When a field is observed as multiple incompatible kinds (e.g. `string | int`), the type becomes `std.json.Value` with a warning. The mixed `int + float` case is special-cased to `f64` (without falling back).
 
+## Array codegen
+
+Default: `--arrays slice` → `[]const T`. `--arrays arraylist` emits
+`std.ArrayList(T)` for owned/builder patterns. `--arrays fixed` emits
+`[N]T` only when every observation of the array has the same length `N`;
+otherwise it falls back to `[]const T` and emits the
+`infer.fixed_length_unstable` warning.
+
+Nested arrays follow the same strategy at every level.
+
+## Forced rename_all
+
+The serde target normally emits `.rename_all` only when one convention
+round-trips every renamed field exactly. `--rename-all <CONV>` skips the
+detection and pins the chosen convention. Fields that don't round-trip
+through it (escaped identifiers, keyword escapes, or wires that simply
+don't fit) get explicit `.rename` entries that override the
+`rename_all`. `--rename-all none` disables auto-detection entirely so
+every renamed field gets explicit `.rename`.
+
 ## Naming engine
 
 Field names are sanitized:
@@ -102,6 +122,14 @@ Field names are sanitized:
 Struct names are derived from the field's PascalCase name. Array element struct names are singularized with a naive trailing-`s` strip (`users` → `User`, `entries` → `Entry`).
 
 The serde decorator detects when a single naming convention round-trips every renamed field exactly and emits `.rename_all = serde.NamingConvention.<convention>` instead of per-field `.rename`. Fields with a trailing `_` (keyword escape) and `@"…"`-escaped fields always get explicit `.rename` entries.
+
+## Nested struct hoisting
+
+Every nested object becomes its own top-level `pub const X = struct { ... };`
+declaration, named after the containing field's PascalCase form (or its
+singularised array element form). There's no inline-vs-hoisted toggle —
+hoisting is unconditional, which keeps recursive types and shared sub-shapes
+simple to reference and to override.
 
 ## What's deferred
 

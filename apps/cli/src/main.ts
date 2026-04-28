@@ -6,6 +6,7 @@ import {
   generateZig,
   runPipeline,
   type AliasStrategy,
+  type ArrayStrategy,
   type EnumStrategy,
   type Format,
   type GenerateOptions,
@@ -17,7 +18,7 @@ import {
   type UnionStrategy,
   type ZigshapeOptions,
 } from "@zigshape/core";
-import { serdeDecorator } from "@zigshape/serde-zig";
+import { serdeDecorator, type RenameAllStrategy } from "@zigshape/serde-zig";
 import { loadConfig } from "./config";
 
 type Target = "plain" | "serde-zig";
@@ -31,9 +32,11 @@ type Args = {
   intStrategy: IntStrategy;
   stringStrategy: StringStrategy;
   mapStrategy: MapStrategy;
+  arrayStrategy: ArrayStrategy;
   enums: EnumStrategy;
   unions: UnionStrategy;
   aliases: AliasStrategy;
+  renameAll: RenameAllStrategy;
   denyUnknownFields: boolean;
   samplesFromArray: boolean;
   defaultsFromSamples: boolean;
@@ -77,6 +80,16 @@ Inference options:
   --int smallest|u64|i64         Integer width strategy. Default: smallest.
   --strings slice|mut|sentinel   String wire form. slice = []const u8 (default).
   --maps auto|struct|hash-map    Map detection override. Default: auto.
+  --arrays slice|arraylist|fixed Array codegen strategy.  slice = []const T
+                                 (default). arraylist = std.ArrayList(T).
+                                 fixed = [N]T when every observation has the
+                                 same length, else falls back to slice with
+                                 the infer.fixed_length_unstable warning.
+  --rename-all CONV              Force a serde naming convention instead of
+                                 the auto-detect heuristic. CONV is one of
+                                 auto (default), none, snake_case,
+                                 camel_case, pascal_case, kebab_case,
+                                 screaming_snake.  serde-zig target only.
   --enums auto|off|always        Enum suggestion. Default: auto.
   --unions off|internal|external|adjacent|untagged
                                  Tagged-union inference + serde tagging
@@ -103,9 +116,11 @@ function parseArgs(argv: readonly string[]): Args {
     intStrategy: "smallest",
     stringStrategy: "slice",
     mapStrategy: "auto",
+    arrayStrategy: "slice",
     enums: "auto",
     unions: "off",
     aliases: "auto",
+    renameAll: "auto",
     denyUnknownFields: false,
     samplesFromArray: false,
     defaultsFromSamples: false,
@@ -180,6 +195,34 @@ function parseArgs(argv: readonly string[]): Args {
         }
         args.mapStrategy = v;
         args.explicit.add("mapStrategy");
+        break;
+      }
+      case "--arrays": {
+        const v = next() as ArrayStrategy | undefined;
+        if (v !== "slice" && v !== "arraylist" && v !== "fixed") {
+          throw new Error(`--arrays must be slice|arraylist|fixed (got '${v}')`);
+        }
+        args.arrayStrategy = v;
+        args.explicit.add("arrayStrategy");
+        break;
+      }
+      case "--rename-all": {
+        const v = next() as RenameAllStrategy | undefined;
+        if (
+          v !== "auto" &&
+          v !== "none" &&
+          v !== "snake_case" &&
+          v !== "camel_case" &&
+          v !== "pascal_case" &&
+          v !== "kebab_case" &&
+          v !== "screaming_snake"
+        ) {
+          throw new Error(
+            `--rename-all must be auto|none|snake_case|camel_case|pascal_case|kebab_case|screaming_snake (got '${v}')`,
+          );
+        }
+        args.renameAll = v;
+        args.explicit.add("renameAll");
         break;
       }
       case "--enums": {
@@ -285,6 +328,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   let overrides: Overrides | undefined;
   let flattenPaths: string[] | undefined;
   let skipPaths: string[] | undefined;
+  let renameAll: RenameAllStrategy = args.renameAll;
   if (args.config) {
     try {
       const cfg = await loadConfig(args.config);
@@ -297,6 +341,9 @@ export async function run(argv: readonly string[]): Promise<number> {
         }
         if (cfg.options.maps !== undefined && !args.explicit.has("mapStrategy")) {
           args.mapStrategy = cfg.options.maps;
+        }
+        if (cfg.options.arrays !== undefined && !args.explicit.has("arrayStrategy")) {
+          args.arrayStrategy = cfg.options.arrays;
         }
         if (cfg.options.enums !== undefined && !args.explicit.has("enums")) {
           args.enums = cfg.options.enums;
@@ -331,6 +378,9 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       if (cfg.serde?.skipPaths && cfg.serde.skipPaths.length > 0) {
         skipPaths = cfg.serde.skipPaths;
+      }
+      if (cfg.serde?.renameAll !== undefined && !args.explicit.has("renameAll")) {
+        renameAll = cfg.serde.renameAll;
       }
       if (cfg.overrides && Object.keys(cfg.overrides).length > 0) {
         overrides = cfg.overrides;
@@ -373,6 +423,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     intStrategy: args.intStrategy,
     strings: args.stringStrategy,
     maps: args.mapStrategy,
+    arrays: args.arrayStrategy,
     enums: args.enums,
     unions: args.unions,
     aliases: args.aliases,
@@ -439,7 +490,12 @@ export async function run(argv: readonly string[]): Promise<number> {
 
   const opts: GenerateOptions =
     args.target === "serde-zig"
-      ? serdeDecorator(normalized, { denyUnknownFields, flattenPaths, skipPaths })
+      ? serdeDecorator(normalized, {
+          denyUnknownFields,
+          flattenPaths,
+          skipPaths,
+          renameAll,
+        })
       : {};
   let code = generateZig(normalized, opts);
 

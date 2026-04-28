@@ -1,4 +1,5 @@
 import type { ZigshapeOptions } from "@zigshape/core";
+import type { RenameAllStrategy } from "@zigshape/serde-zig";
 
 /** zigshape.json on-disk shape.  All keys optional. */
 export type ZigshapeConfig = {
@@ -12,6 +13,9 @@ export type ZigshapeConfig = {
     denyUnknownFields?: boolean;
     flattenPaths?: string[];
     skipPaths?: string[];
+    /** Force a serde naming convention.  Defaults to `auto` (existing
+     *  detect-when-it-round-trips heuristic) when unspecified. */
+    renameAll?: RenameAllStrategy;
   };
 };
 

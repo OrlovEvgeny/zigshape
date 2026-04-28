@@ -16,6 +16,11 @@ export type UnionStrategy =
 export type AliasStrategy = "auto" | "off";
 export type StringStrategy = "slice" | "mut" | "sentinel";
 export type MapStrategy = "auto" | "struct" | "hash-map";
+/** Array codegen strategy.  `slice` (default) emits `[]const T`.  `arraylist`
+ *  emits `std.ArrayList(T)` for owned/builder patterns.  `fixed` emits `[N]T`
+ *  when every observation of the array has length N; otherwise falls back to
+ *  slice and emits `infer.fixed_length_unstable`. */
+export type ArrayStrategy = "slice" | "arraylist" | "fixed";
 
 export type ZigshapeOptions = {
   format: "auto" | Format;
@@ -34,6 +39,8 @@ export type ZigshapeOptions = {
    *  emit std.StringHashMap; "hash-map" → always when fields are homogeneous,
    *  ignoring key shape (still requires homogeneous values). */
   maps: MapStrategy;
+  /** Array codegen strategy.  See `ArrayStrategy`. */
+  arrays: ArrayStrategy;
   /** When true and a sample's root is an array, each item of the array is
    *  observed as an independent sample for inference purposes.  NDJSON input
    *  forces this on; users can also opt in for plain JSON arrays they want
@@ -55,6 +62,7 @@ export const DEFAULT_OPTIONS: ZigshapeOptions = {
   denyUnknownFields: false,
   strings: "slice",
   maps: "auto",
+  arrays: "slice",
   treatRootArrayAsSamples: false,
   mapMinKeys: 4,
   enumMaxVariants: 8,

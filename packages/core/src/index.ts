@@ -60,6 +60,7 @@ export {
   type AliasStrategy,
   type StringStrategy,
   type MapStrategy,
+  type ArrayStrategy,
   DEFAULT_OPTIONS,
   withDefaults,
 } from "./options";

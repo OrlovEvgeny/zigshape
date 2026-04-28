@@ -100,10 +100,12 @@ export function runPipeline({ samples, rootName, inferOptions, overrides }: Pipe
     rootName,
     intStrategy: options.intStrategy,
     stringStrategy: options.strings,
+    arrayStrategy: options.arrays,
     defaultsFromSamples: options.defaultsFromSamples,
     observations,
     xmlRootElement,
     overrides,
+    diagnostics: all,
   });
   return { normalized, warnings: all.toArray() };
 }

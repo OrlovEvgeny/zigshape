@@ -52,9 +52,16 @@ zigshape [files-or-urls...]
   [--int smallest|u64|i64]            integer width strategy; default smallest
   [--strings slice|mut|sentinel]      string wire form; default slice
   [--maps auto|struct|hash-map]       map detection override; default auto
+  [--arrays slice|arraylist|fixed]    array codegen strategy; default slice
   [--enums auto|off|always]           enum suggestion; default auto
-  [--unions off|tagged]               tagged-union inference; default off
+  [--unions off|internal|external|adjacent|untagged]
+                                      tagged-union inference + serde tagging
+                                      style; default off
   [--aliases auto|off]                cross-sample alias detection; default auto
+  [--rename-all CONV]                 force serde naming convention (auto,
+                                      none, snake_case, camel_case,
+                                      pascal_case, kebab_case,
+                                      screaming_snake); default auto
   [--deny-unknown-fields]             emit serde .deny_unknown_fields = true
   [--defaults-from-samples]           emit observed scalar values as defaults
   [--zig-fmt]                         pipe output through WASM zig fmt
@@ -132,8 +139,6 @@ v1.0 shipped: alias detection across samples, schema drift CI, share links, edit
 
 Future:
 - TOML / XML per-key source ranges (currently whole-document fallback).
-- `--rename-all` and `--arrays slice|arraylist|fixed` flags.
-- Other `union(enum)` tagging styles (external / adjacent / untagged).
 - vscode-test integration harness for end-to-end command coverage.
 
 Plan files live in `.claude/plans/`. See `docs/limitations.md` for known limits.

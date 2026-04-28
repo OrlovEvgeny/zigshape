@@ -25,7 +25,23 @@ export type SerdeDecorateOptions = {
   /** Field paths that should be skipped during serialization: emits
    *  `.skip = .{ .field, … }`. */
   skipPaths?: string[];
+  /** Force a specific naming convention for `.rename_all` instead of using
+   *  the detect-when-it-round-trips heuristic.  `auto` (default) preserves
+   *  the existing detection.  `none` disables detection entirely so every
+   *  renamed field gets explicit `.rename`.  Otherwise the chosen convention
+   *  is always emitted; per-field `.rename` covers any field whose wire key
+   *  doesn't round-trip through the convention. */
+  renameAll?: RenameAllStrategy;
 };
+
+export type RenameAllStrategy =
+  | "auto"
+  | "none"
+  | "snake_case"
+  | "camel_case"
+  | "pascal_case"
+  | "kebab_case"
+  | "screaming_snake";
 
 /** Produce GenerateOptions that decorate every struct / enum / union with the
  *  relevant `pub const serde = .{ ... }` block, and add
@@ -38,12 +54,16 @@ export function serdeDecorator(
   const denyUnknownFields = options.denyUnknownFields === true;
   const flattenSet = new Set(options.flattenPaths ?? []);
   const skipSet = new Set(options.skipPaths ?? []);
+  const renameAll: RenameAllStrategy = options.renameAll ?? "auto";
+  const forcedConvention: Convention | null =
+    renameAll !== "auto" && renameAll !== "none" ? renameAll : null;
   const anyDecorated = result.decls.some((d) => {
     if (d.kind === "struct") {
       if (d.fields.some((f) => f.renamed || f.xml || (f.aliases?.length ?? 0) > 0)) return true;
       if (d.fields.some((f) => flattenSet.has(f.path) || skipSet.has(f.path))) return true;
       if (result.xmlRootElement && d.name === result.rootName) return true;
       if (denyUnknownFields) return true;
+      if (forcedConvention && d.fields.length > 0) return true;
       return false;
     }
     if (d.kind === "enum") return d.variants.some((v) => v.renamed);
@@ -57,8 +77,9 @@ export function serdeDecorator(
         denyUnknownFields,
         flattenSet,
         skipSet,
+        renameAll,
       }),
-    decorateEnum: (decl) => buildEnumBlock(decl),
+    decorateEnum: (decl) => buildEnumBlock(decl, renameAll),
     decorateUnion: (decl) => buildUnionBlock(decl),
   };
 }
@@ -129,6 +150,7 @@ function buildStructBlock(
     denyUnknownFields: boolean;
     flattenSet: ReadonlySet<string>;
     skipSet: ReadonlySet<string>;
+    renameAll: RenameAllStrategy;
   },
 ): string[] | null {
   const renamed = decl.fields.filter((f) => f.renamed);
@@ -139,6 +161,8 @@ function buildStructBlock(
   const skipped = decl.fields.filter((f) => opts.skipSet.has(f.path));
   const xmlRoot = opts.xmlRoot;
   const denyUnknownFields = opts.denyUnknownFields;
+  const forcedConvention: Convention | null =
+    opts.renameAll !== "auto" && opts.renameAll !== "none" ? opts.renameAll : null;
 
   if (
     renamed.length === 0 &&
@@ -148,13 +172,28 @@ function buildStructBlock(
     flattened.length === 0 &&
     skipped.length === 0 &&
     !xmlRoot &&
-    !denyUnknownFields
+    !denyUnknownFields &&
+    !(forcedConvention && decl.fields.length > 0)
   ) {
     return null;
   }
 
-  const convention = renamed.length > 0 ? detectConvention(decl) : null;
-  const explicit = convention ? [] : renamed;
+  let convention: Convention | null;
+  let explicit: ZigField[];
+  if (forcedConvention) {
+    convention = forcedConvention;
+    // Under forced mode, every field whose wire key doesn't round-trip
+    // through the chosen convention needs an explicit `.rename` to override
+    // it.  Escaped identifiers and trailing-`_` keyword escapes always need
+    // explicit rename because no convention can produce them.
+    explicit = decl.fields.filter((f) => !fieldFitsConvention(f, forcedConvention));
+  } else if (opts.renameAll === "none") {
+    convention = null;
+    explicit = renamed;
+  } else {
+    convention = renamed.length > 0 ? detectConvention(decl) : null;
+    explicit = convention ? [] : renamed;
+  }
 
   const lines: string[] = [];
   lines.push("pub const serde = .{");
@@ -203,13 +242,25 @@ function buildStructBlock(
   return lines;
 }
 
-function buildEnumBlock(decl: EnumDecl): string[] | null {
+function buildEnumBlock(decl: EnumDecl, renameAll: RenameAllStrategy): string[] | null {
   const renamed = decl.variants.filter((v) => v.renamed);
-  if (renamed.length === 0) return null;
+  const forcedConvention: Convention | null =
+    renameAll !== "auto" && renameAll !== "none" ? renameAll : null;
+  if (renamed.length === 0 && !forcedConvention) return null;
+  if (renamed.length === 0 && forcedConvention && decl.variants.length === 0) return null;
 
-  // Try a single naming convention across all variants (renamed AND not).
-  const convention = detectEnumConvention(decl.variants);
-  const explicit = convention ? [] : renamed;
+  let convention: Convention | null;
+  let explicit: typeof renamed;
+  if (forcedConvention) {
+    convention = forcedConvention;
+    explicit = decl.variants.filter((v) => !variantFitsConvention(v, forcedConvention));
+  } else if (renameAll === "none") {
+    convention = null;
+    explicit = renamed;
+  } else {
+    convention = detectEnumConvention(decl.variants);
+    explicit = convention ? [] : renamed;
+  }
 
   const lines: string[] = [];
   lines.push("pub const serde = .{");
@@ -227,21 +278,19 @@ function buildEnumBlock(decl: EnumDecl): string[] | null {
   return lines;
 }
 
+function variantFitsConvention(v: EnumDeclVariant, c: Convention): boolean {
+  if (v.escaped) return false;
+  if (/_$/.test(v.zigName)) return false;
+  return fromSnake(v.zigName, c) === v.rawValue;
+}
+
 function detectEnumConvention(variants: EnumDeclVariant[]): Convention | null {
   if (variants.length === 0) return null;
   for (const c of ALL_CONVENTIONS) {
     let ok = true;
     let usefulRename = false;
     for (const v of variants) {
-      if (v.escaped) {
-        ok = false;
-        break;
-      }
-      if (/_$/.test(v.zigName)) {
-        ok = false;
-        break;
-      }
-      if (fromSnake(v.zigName, c) !== v.rawValue) {
+      if (!variantFitsConvention(v, c)) {
         ok = false;
         break;
       }

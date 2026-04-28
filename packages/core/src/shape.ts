@@ -4,7 +4,7 @@ export type Shape =
   | { kind: "int"; signed: boolean; min: bigint; max: bigint }
   | { kind: "float" }
   | { kind: "string" }
-  | { kind: "array"; element: Shape }
+  | { kind: "array"; path: string; element: Shape }
   | { kind: "object"; path: string; fields: Map<string, FieldShape> }
   | { kind: "map"; valuePath: string; value: Shape }
   | { kind: "enum"; path: string; variants: EnumVariant[] }

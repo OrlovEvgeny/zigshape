@@ -142,10 +142,10 @@ function inferSingleKind(
         elementObs.objectItems.length >= 2
       ) {
         const union = inferUnion(elementPath, elementObs.objectItems, taggingStyle, opts, diag);
-        if (union) return { kind: "array", element: union };
+        if (union) return { kind: "array", path, element: union };
       }
       const element = inferAt(elementPath, obs, opts, diag);
-      return { kind: "array", element };
+      return { kind: "array", path, element };
     }
     case "object":
       return inferObject(path, o, obs, opts, diag);

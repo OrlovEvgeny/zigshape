@@ -30,14 +30,20 @@ jobs:
       - name: Typecheck (all workspaces)
         run: bun run typecheck
 
-      # Bun's test runner has a known segfault when spawning many child
-      # processes back-to-back across mixed workspaces, so run packages /
-      # CLI / web in separate steps. Each completes cleanly on its own.
+      # Bun 1.3.3 crashes (SIGILL) when its test runner spawns many child
+      # processes back-to-back. The CLI suite spawns a Bun subprocess per
+      # test (see `runCli` in apps/cli/test). Running each file as its own
+      # `bun test` invocation keeps the spawn count low enough.
       - name: Test packages/
         run: bun test packages/
 
       - name: Test apps/cli/
-        run: bun test apps/cli/
+        run: |
+          for f in apps/cli/test/*.test.ts; do
+            echo "::group::$f"
+            bun test "$f"
+            echo "::endgroup::"
+          done
 
       - name: Test apps/web/
         run: bun test apps/web/

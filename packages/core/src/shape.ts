@@ -61,6 +61,10 @@ export type FieldShape = {
    *  in the same sample.  Drives `.alias = .{ ... }` in the serde decorator;
    *  the plain target ignores it. */
   aliases?: string[];
+  /** Documentation comment captured at parse time (currently YAML only).
+   *  Surfaces as `/// ...` lines in the generated struct when the
+   *  generator's `withDocComments` option is on. */
+  docComment?: string;
 };
 
 export function shapesEqual(a: Shape, b: Shape): boolean {

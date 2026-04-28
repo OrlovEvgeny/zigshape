@@ -245,6 +245,7 @@ function inferObject(
       parentTotal,
       optionalReason,
       xml: o.childKeyXml?.get(key),
+      docComment: o.childKeyDocComment?.get(key),
     });
   }
 

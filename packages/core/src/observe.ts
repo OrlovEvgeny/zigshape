@@ -32,6 +32,10 @@ export type Observation = {
   // Read by `infer` to stamp FieldShape.xml so the serde decorator can emit
   // xml_attribute lists.  Attribute mark wins on multi-sample disagreement.
   childKeyXml?: Map<string, "attribute" | "text">;
+  /** Documentation comment captured by the parser (currently YAML only).
+   *  First non-empty observation wins so multi-sample inputs don't drift
+   *  per-run. */
+  childKeyDocComment?: Map<string, string>;
   // Object items observed at this path (only populated when this path is an
   // array element).  Used by tagged-union inference, which re-groups items by
   // discriminator value.  Capped to bound memory on huge inputs.
@@ -138,6 +142,14 @@ function observe(value: ZValue, path: string, map: ObservationMap): void {
           // Attribute wins over text on multi-sample disagreement.
           const prev = o.childKeyXml.get(key);
           if (prev !== "attribute") o.childKeyXml.set(key, field.xml.kind);
+        }
+        if (field.docComment) {
+          o.childKeyDocComment ??= new Map();
+          // First non-empty doc comment wins so multi-sample runs are
+          // deterministic.
+          if (!o.childKeyDocComment.has(key)) {
+            o.childKeyDocComment.set(key, field.docComment);
+          }
         }
         o.childKeyBySample ??= new Map();
         let presence = o.childKeyBySample.get(key);

@@ -21,6 +21,9 @@ export type GenerateOptions = {
   decorateUnion?: (decl: UnionDecl) => string[] | null | undefined;
   /** Extra import lines (e.g. `const serde = @import("serde");`). */
   extraImports?: string[];
+  /** When true, emit a `/// {comment}` line above each struct field that
+   *  carries a `docComment` (currently only YAML inputs surface them). */
+  withDocComments?: boolean;
 };
 
 const INDENT = "    ";
@@ -89,7 +92,12 @@ function appendStruct(lines: string[], decl: StructDecl, options: GenerateOption
     return;
   }
   lines.push(`pub const ${decl.name} = struct {`);
-  for (const f of decl.fields) lines.push(INDENT + renderField(f));
+  for (const f of decl.fields) {
+    if (options.withDocComments && f.docComment) {
+      lines.push(INDENT + "/// " + f.docComment);
+    }
+    lines.push(INDENT + renderField(f));
+  }
   if (decoration.length > 0) {
     if (decl.fields.length > 0) lines.push("");
     for (const dl of decoration) lines.push(dl === "" ? "" : INDENT + dl);

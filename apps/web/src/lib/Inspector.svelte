@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Decl, FieldOverride, Overrides, ZigField } from "@zigshape/core";
-  import { renderZigType } from "@zigshape/core";
+  import { renderZigType, suggestAlternatives } from "@zigshape/core";
 
   type Props = {
     decls: Decl[];
@@ -47,6 +47,12 @@
   function resetField(path: string) {
     onSetOverride(path, null);
     if (editingPath === path) editingPath = null;
+  }
+
+  function applyAlternative(f: ZigField, alt: string) {
+    const ov = overrides[f.path] ?? {};
+    onSetOverride(f.path, { ...ov, type: alt });
+    editingPath = null;
   }
 
   function reasonText(f: ZigField): string {
@@ -103,6 +109,7 @@
             {:else}
               <ul>
                 {#each decl.fields as f (f.name)}
+                  {@const alts = suggestAlternatives(f.type)}
                   <li class:open={editingPath === f.path}>
                     <button type="button" class="row" onclick={() => onJump(f.path)}>
                       <code class="field">{f.name}</code>
@@ -130,6 +137,19 @@
                         <button type="button" class="link" onclick={() => resetField(f.path)}>reset</button>
                       {/if}
                     </span>
+                    {#if alts.length > 0 && editingPath !== f.path}
+                      <div class="alternatives">
+                        <span class="alternatives-label">Alternatives:</span>
+                        {#each alts as alt (alt)}
+                          <button
+                            type="button"
+                            class="alt"
+                            onclick={() => applyAlternative(f, alt)}
+                            title="Apply as override"
+                          ><code>{alt}</code></button>
+                        {/each}
+                      </div>
+                    {/if}
                     {#if editingPath === f.path}
                       <div class="editor">
                         <label>
@@ -350,4 +370,34 @@
     cursor: pointer;
   }
   .editor button.primary:hover { filter: brightness(1.05); }
+  .alternatives {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: baseline;
+    padding: 0 0.5rem 0.4rem;
+  }
+  .alternatives-label {
+    color: #888;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .alt {
+    background: #fff;
+    border: 1px dashed #cbd5f0;
+    color: #2a3a72;
+    border-radius: 3px;
+    padding: 0.1rem 0.35rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+  }
+  .alt code {
+    font-family: ui-monospace, monospace;
+    background: transparent;
+    padding: 0;
+    color: inherit;
+  }
+  .alt:hover { background: #eef2ff; border-style: solid; }
 </style>

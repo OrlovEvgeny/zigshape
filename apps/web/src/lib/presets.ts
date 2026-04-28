@@ -1,6 +1,6 @@
 import type { ZigshapeOptions } from "@zigshape/core";
 
-export type PresetId = "api" | "strict" | "loose";
+export type PresetId = "api" | "strict" | "loose" | "xml";
 
 export type Preset = {
   id: PresetId;
@@ -40,6 +40,19 @@ export const PRESETS: Preset[] = [
       intStrategy: "u64",
       enums: "off",
       unions: "off",
+      defaultsFromSamples: false,
+    },
+  },
+  {
+    id: "xml",
+    label: "XML document",
+    description: "XML-friendly defaults: u64 widths, aliases on, no enum guessing — keeps the generated struct close to the wire form.",
+    options: {
+      format: "xml",
+      intStrategy: "u64",
+      enums: "off",
+      unions: "off",
+      aliases: "auto",
       defaultsFromSamples: false,
     },
   },

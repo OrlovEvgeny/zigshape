@@ -20,6 +20,12 @@ export type ZField = {
    *  `xml_attribute` in the serde block; "text" → text-node fallback with
    *  a TODO comment.  Other parsers leave it undefined. */
   xml?: { kind: "attribute" | "text" };
+  /** Source-format comment attached to this key (currently surfaced by the
+   *  YAML parser via `commentBefore` on the mapping pair).  Surfaces in the
+   *  generated struct as `/// ...` doc comments when `withDocComments` is
+   *  on.  Multi-line comments are joined with a single space; leading `#`
+   *  / whitespace per line are stripped at parse time. */
+  docComment?: string;
 };
 
 export type ZValue = ZNull | ZBool | ZInt | ZFloat | ZString | ZArray | ZObject;

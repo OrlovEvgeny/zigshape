@@ -73,6 +73,86 @@ export function renderZigType(t: ZigType): string {
   }
 }
 
+/** Suggest a small set of plausible alternative Zig type expressions for an
+ *  inferred type.  Used by the inspector to surface "Alternatives" alongside
+ *  the generated decision so the user can swap with one click without
+ *  inventing the right syntax themselves.  The strings are raw Zig
+ *  expressions ready to drop into a per-field override.  Order matters
+ *  (most useful first); duplicates and the current rendering are stripped. */
+export function suggestAlternatives(t: ZigType): string[] {
+  const current = renderZigType(t);
+  const out: string[] = [];
+  switch (t.kind) {
+    case "string": {
+      out.push("[]const u8", "[]u8", "[:0]const u8", "serde.Value");
+      break;
+    }
+    case "int": {
+      const widths: ZigIntWidth[] = ["u8", "u16", "u32", "u64", "usize", "i8", "i16", "i32", "i64", "isize"];
+      for (const w of widths) out.push(w);
+      break;
+    }
+    case "f64":
+      out.push("f32", "[]const u8", "serde.Value");
+      break;
+    case "slice":
+      out.push(
+        "std.ArrayList(" + renderZigType(t.element) + ")",
+        "[]" + renderZigType(t.element),
+      );
+      break;
+    case "arraylist":
+      out.push(
+        "[]const " + renderZigType(t.element),
+        "[]" + renderZigType(t.element),
+      );
+      break;
+    case "fixedArray":
+      out.push(
+        "[]const " + renderZigType(t.element),
+        "std.ArrayList(" + renderZigType(t.element) + ")",
+      );
+      break;
+    case "stringMap":
+      out.push("serde.Value", "std.json.Value");
+      break;
+    case "json":
+      out.push("serde.Value", "[]const u8", '@compileError("zigshape: replace with concrete type")');
+      break;
+    case "serdeValue":
+      out.push("std.json.Value", "[]const u8");
+      break;
+    case "compileError":
+      out.push("std.json.Value", "serde.Value", "[]const u8");
+      break;
+    case "optional": {
+      const inner = renderZigType(t.inner);
+      out.push(inner, "?serde.Value");
+      break;
+    }
+    case "ref":
+      // Refs are user-named structs; offering "alternatives" for them is
+      // mostly noise.  Suggest the optional wrap as the one useful tweak.
+      out.push("?" + t.structName);
+      break;
+    case "bool":
+    case "raw":
+      // Booleans don't have alternatives; raw types are user-supplied
+      // already.
+      break;
+  }
+  // Dedup, drop the current rendering, cap to 4.
+  const seen = new Set<string>([current]);
+  const unique: string[] = [];
+  for (const a of out) {
+    if (seen.has(a)) continue;
+    seen.add(a);
+    unique.push(a);
+    if (unique.length >= 4) break;
+  }
+  return unique;
+}
+
 export function pickIntWidth(
   min: bigint,
   max: bigint,

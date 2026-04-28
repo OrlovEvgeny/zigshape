@@ -50,6 +50,7 @@ type Args = {
   withParser: boolean;
   withTests: boolean;
   withBuildSnippet: boolean;
+  withDocComments: boolean;
   zigFmt: boolean;
   out: string | null;
   reportOut: string | null;
@@ -97,6 +98,10 @@ Output options:
                                  the first sample as input.
   --with-build-snippet           Prepend a build.zig comment block describing
                                  dependency wiring (no-op for plain target).
+  --with-doc-comments            Surface YAML key comments as /// doc
+                                 comments above the matching struct fields.
+                                 No-op for JSON / TOML / XML — those parsers
+                                 don't expose comments.
 
 Inference options:
   --int smallest|u64|i64|usize   Integer width strategy. Default: smallest.
@@ -157,6 +162,7 @@ function parseArgs(argv: readonly string[]): Args {
     withParser: false,
     withTests: false,
     withBuildSnippet: false,
+    withDocComments: false,
     zigFmt: false,
     out: null,
     reportOut: null,
@@ -333,6 +339,10 @@ function parseArgs(argv: readonly string[]): Args {
       case "--with-build-snippet":
         args.withBuildSnippet = true;
         args.explicit.add("withBuildSnippet");
+        break;
+      case "--with-doc-comments":
+        args.withDocComments = true;
+        args.explicit.add("withDocComments");
         break;
       case "--zig-fmt":
         args.zigFmt = true;
@@ -618,7 +628,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     }
   }
 
-  const opts: GenerateOptions =
+  const baseOpts: GenerateOptions =
     args.target === "serde-zig"
       ? serdeDecorator(normalized, {
           denyUnknownFields,
@@ -627,6 +637,7 @@ export async function run(argv: readonly string[]): Promise<number> {
           renameAll,
         })
       : {};
+  const opts: GenerateOptions = { ...baseOpts, withDocComments: args.withDocComments };
   let code = generateZig(normalized, opts);
 
   // Append snippets after struct codegen so `zig fmt` (which runs next)

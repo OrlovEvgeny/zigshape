@@ -64,6 +64,7 @@
   let format = $state<FormatArg>(initialFormat);
   let presetId = $state<PresetId>(initialPreset);
   let zigFmt = $state(false);
+  let withDocComments = $state(false);
   let formattedCode = $state<string | null>(null);
   let formatterError = $state<string | null>(null);
   let inputHighlight = $state<HighlightRange | null>(null);
@@ -75,6 +76,16 @@
     const sample = samples[activeIndex] ?? "";
     if (!sample.trim()) return null;
     return detectFormat(sample).format;
+  });
+
+  // Confidence (0..1) for the auto-detect. Surfaced in the Format
+  // dropdown so the user knows when a heuristic is shaky and they
+  // should click into a specific format.
+  const detectedConfidence = $derived.by(() => {
+    if (format !== "auto") return null;
+    const sample = samples[activeIndex] ?? "";
+    if (!sample.trim()) return null;
+    return detectFormat(sample).confidence;
   });
 
   const editorLanguage: EditorLanguage = $derived(
@@ -115,7 +126,8 @@
         resolvedFormat,
       };
     }
-    const opts = target === "serde-zig" ? serdeDecorator(normalized) : {};
+    const baseOpts = target === "serde-zig" ? serdeDecorator(normalized) : {};
+    const opts = { ...baseOpts, withDocComments };
     const code = generateZig(normalized, opts);
     return { code, warnings, decls: normalized.decls, normalized, resolvedFormat };
   });
@@ -400,7 +412,9 @@
   bind:format
   bind:presetId
   bind:zigFmt
+  bind:withDocComments
   detectedFormat={detectedFormat ?? null}
+  detectedConfidence={detectedConfidence ?? null}
   onLoadExample={loadExample}
   onCopy={copyZig}
   onDownload={downloadZig}

@@ -123,6 +123,15 @@ Struct names are derived from the field's PascalCase name. Array element struct 
 
 The serde decorator detects when a single naming convention round-trips every renamed field exactly and emits `.rename_all = serde.NamingConvention.<convention>` instead of per-field `.rename`. Fields with a trailing `_` (keyword escape) and `@"…"`-escaped fields always get explicit `.rename` entries.
 
+## Doc comments
+
+YAML mapping pair comments (`# ...` lines that immediately precede a key)
+are captured at parse time and surfaced as `///` doc comments on the
+matching struct fields when the generator's `withDocComments` option is on
+(`--with-doc-comments` on the CLI, the *YAML doc comments* toggle in the
+web playground). JSON, TOML, and XML parsers don't expose comments, so the
+flag is a no-op for those inputs.
+
 ## Nested struct hoisting
 
 Every nested object becomes its own top-level `pub const X = struct { ... };`

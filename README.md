@@ -82,6 +82,8 @@ zigshape [files-or-urls...]
   [--with-tests]                      append a test "parse <Root>" scaffold
   [--with-build-snippet]              prepend a build.zig comment block with
                                       dependency wiring
+  [--with-doc-comments]               surface YAML key comments as ///
+                                      doc comments above the matching fields
   [--stdin]                           read sample from stdin
 ```
 
@@ -114,9 +116,9 @@ CLI flags always win over config; config fills the gaps. Per-field overrides mat
 
 ## Web playground
 
-The toolbar exposes options as **presets**: *API response* (smallest int + auto enums), *Strict config* (u64 + defaults-from-samples), *Loose schema* (everything wide). Format auto-detect runs as you type; the dropdown shows what was picked.
+The toolbar exposes options as **presets**: *API response* (smallest int + auto enums), *Strict config* (u64 + defaults-from-samples), *Loose schema* (everything wide), *XML document* (XML-friendly defaults pinned to format=xml). Format auto-detect runs as you type; the dropdown shows what was picked along with the heuristic confidence (`auto (yaml, 92%)`).
 
-WASM `zig fmt` runs in the browser via a lazy WASM init. Per-field overrides live in the inspector — click "override…" on any field to edit type / name / optional. Share buttons encode either config-only (`#c=…`) or config + samples (`#s=…`, 8 KB guard) into the URL hash; hashes never leave the browser.
+WASM `zig fmt` runs in the browser via a lazy WASM init. The "YAML doc comments" toggle surfaces YAML key comments as `///` lines on the matching struct fields. Per-field overrides live in the inspector — click "override…" on any field to edit type / name / optional, or click an item in the per-field "Alternatives:" row to apply the swap directly. Share buttons encode either config-only (`#c=…`) or config + samples (`#s=…`, 8 KB guard) into the URL hash; hashes never leave the browser.
 
 The toolbar's **More…** row exposes four output variants that match the CLI's `--with-*` flags: copy a `parse<Root>` helper, copy a `build.zig` dependency snippet, copy a `test "parse <Root>"` scaffold seeded from the active sample, and download the schema report (the same JSON `--report` writes).
 

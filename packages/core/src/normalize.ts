@@ -31,6 +31,10 @@ export type ZigField = {
    *  alias detection.  Drives `.alias` in the serde decorator; plain target
    *  ignores. */
   aliases?: string[];
+  /** Documentation comment carried from the parser.  Generator emits as
+   *  `/// {docComment}` above the field when its `withDocComments` option is
+   *  on. */
+  docComment?: string;
   /** True when one or more user-supplied overrides modified this field —
    *  drives the inspector's "overridden" badge. */
   overridden?: boolean;
@@ -449,6 +453,7 @@ function buildField(
     optionalReason: fieldShape.optionalReason,
     xml: fieldShape.xml,
     aliases: fieldShape.aliases,
+    docComment: fieldShape.docComment,
     overridden: overridden || undefined,
     kindCounts,
   };

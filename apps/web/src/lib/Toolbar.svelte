@@ -10,8 +10,10 @@
     target: "plain" | "serde-zig";
     format: FormatArg;
     detectedFormat: Format | null;
+    detectedConfidence: number | null;
     presetId: PresetId;
     zigFmt: boolean;
+    withDocComments: boolean;
     onLoadExample: (e: Example) => void;
     onCopy: () => void;
     onDownload: () => void;
@@ -29,8 +31,10 @@
     target = $bindable(),
     format = $bindable(),
     detectedFormat,
+    detectedConfidence,
     presetId = $bindable(),
     zigFmt = $bindable(),
+    withDocComments = $bindable(),
     onLoadExample,
     onCopy,
     onDownload,
@@ -64,7 +68,11 @@
   </label>
   <label>Format
     <select bind:value={format}>
-      <option value="auto">auto{detectedFormat ? ` (${detectedFormat})` : ""}</option>
+      <option value="auto">auto{detectedFormat
+        ? detectedConfidence !== null
+          ? ` (${detectedFormat}, ${Math.round(detectedConfidence * 100)}%)`
+          : ` (${detectedFormat})`
+        : ""}</option>
       <option value="json">JSON</option>
       <option value="yaml">YAML</option>
       <option value="toml">TOML</option>
@@ -95,6 +103,10 @@
   <label class="checkbox-label">
     <input type="checkbox" bind:checked={zigFmt} />
     <span>zig fmt</span>
+  </label>
+  <label class="checkbox-label">
+    <input type="checkbox" bind:checked={withDocComments} />
+    <span>YAML doc comments</span>
   </label>
   <span class="spacer"></span>
   <button type="button" onclick={onCopy} disabled={!canCopy}>Copy Zig</button>

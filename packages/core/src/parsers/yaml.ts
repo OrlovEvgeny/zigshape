@@ -123,8 +123,10 @@ function nodeToZ(
       const key = keyNode.value;
       const keySrc = srcOf(sample, keyNode);
 
+      const docComment = extractDocComment(pair, keyNode);
+
       if (!pair.value) {
-        fields.set(key, { key, keySrc, value: { kind: "null", src: keySrc } });
+        fields.set(key, { key, keySrc, value: { kind: "null", src: keySrc }, docComment });
         continue;
       }
       const value = nodeToZ(pair.value as Node, input, sample, doc, diag);
@@ -137,7 +139,7 @@ function nodeToZ(
         );
         continue;
       }
-      fields.set(key, { key, keySrc, value });
+      fields.set(key, { key, keySrc, value, docComment });
     }
     // Second pass: merge sources, only filling keys not already explicit.
     for (const m of mergeNodes) spreadMerge(m, input, sample, doc, diag, fields);
@@ -192,6 +194,27 @@ function scalarToZ(node: Scalar, input: string, sample: number, diag: Diagnostic
     { src },
   );
   return { kind: "string", value: String(v), src };
+}
+
+/** Pull the YAML comment that immediately precedes a mapping pair, if any.
+ *  Comments are normalised: leading whitespace and the `#` marker are
+ *  stripped per line, multi-line comments are joined with a single space so
+ *  the result fits one `///` line in the generated struct. */
+function extractDocComment(pair: unknown, keyNode: Node): string | undefined {
+  const candidates: Array<string | null | undefined> = [
+    (pair as { commentBefore?: string | null }).commentBefore,
+    (keyNode as { commentBefore?: string | null }).commentBefore,
+  ];
+  for (const c of candidates) {
+    if (typeof c !== "string" || c.length === 0) continue;
+    const cleaned = c
+      .split("\n")
+      .map((l) => l.replace(/^\s*#?\s?/, "").trimEnd())
+      .filter((l) => l.length > 0)
+      .join(" ");
+    if (cleaned.length > 0) return cleaned;
+  }
+  return undefined;
 }
 
 function isFloatLiteral(text: string, format?: string): boolean {

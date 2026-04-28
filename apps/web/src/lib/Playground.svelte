@@ -69,7 +69,6 @@
   let target = $state<"plain" | "serde-zig">(initialTarget ?? startExample.target);
   let format = $state<FormatArg>(initialFormat);
   let presetId = $state<PresetId>(initialPreset);
-  let zigFmt = $state(false);
   let withDocComments = $state(false);
   let formattedCode = $state<string | null>(null);
   let formatterError = $state<string | null>(null);
@@ -140,9 +139,13 @@
 
   const displayCode = $derived(formattedCode ?? generated.code);
 
+  // zig fmt always runs in the background — the user shouldn't have to
+  // think about it. WASM init is lazy, so the first format pays the load
+  // cost; subsequent edits are cheap. On failure we fall back to the
+  // unformatted source and surface a tiny notice (formatterError).
   $effect(() => {
     const raw = generated.code;
-    if (!zigFmt || !raw) {
+    if (!raw) {
       formattedCode = null;
       formatterError = null;
       return;
@@ -417,7 +420,6 @@
   bind:target
   bind:format
   bind:presetId
-  bind:zigFmt
   bind:withDocComments
   detectedFormat={detectedFormat ?? null}
   detectedConfidence={detectedConfidence ?? null}

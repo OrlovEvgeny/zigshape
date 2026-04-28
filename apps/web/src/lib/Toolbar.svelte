@@ -12,7 +12,6 @@
     detectedFormat: Format | null;
     detectedConfidence: number | null;
     presetId: PresetId;
-    zigFmt: boolean;
     withDocComments: boolean;
     onLoadExample: (e: Example) => void;
     onCopy: () => void;
@@ -33,7 +32,6 @@
     detectedFormat,
     detectedConfidence,
     presetId = $bindable(),
-    zigFmt = $bindable(),
     withDocComments = $bindable(),
     onLoadExample,
     onCopy,
@@ -99,10 +97,6 @@
         <option value={ex.id}>{ex.label}</option>
       {/each}
     </select>
-  </label>
-  <label class="checkbox-label">
-    <input type="checkbox" bind:checked={zigFmt} />
-    <span>zig fmt</span>
   </label>
   <label class="checkbox-label">
     <input type="checkbox" bind:checked={withDocComments} />

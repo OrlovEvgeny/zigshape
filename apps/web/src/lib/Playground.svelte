@@ -6,6 +6,7 @@
   import SampleTabs from "$lib/SampleTabs.svelte";
   import Toolbar from "$lib/Toolbar.svelte";
   import Warnings from "$lib/Warnings.svelte";
+  import { tryParseCurl } from "$lib/curl";
   import { EXAMPLES, type Example } from "$lib/examples";
   import { DEFAULT_PRESET, PRESETS, type PresetId } from "$lib/presets";
   import {
@@ -301,10 +302,38 @@
   });
 
   let activeValue = $derived(samples[activeIndex] ?? "");
+  let curlNotice = $state<string | null>(null);
   $effect(() => {
     if (activeValue !== samples[activeIndex]) {
       samples = samples.map((s, i) => (i === activeIndex ? activeValue : s));
     }
+  });
+
+  // When the active sample is pasted as a `curl ...` command, replace it
+  // with the extracted body and (if no name has been edited yet) seed the
+  // root struct name from the URL path.  Triggered after the value is
+  // committed so the editor and `samples` stay in sync — the next derive
+  // recomputes `activeValue` from the new `samples[activeIndex]`.
+  $effect(() => {
+    const v = samples[activeIndex];
+    if (!v) return;
+    const c = tryParseCurl(v);
+    if (!c) return;
+    const next = [...samples];
+    next[activeIndex] = c.sample;
+    samples = next;
+    if (c.rootHint) {
+      // Avoid overwriting a name the user explicitly chose.  A "default"
+      // rootName is one that still matches an example's rootName, the
+      // empty string, or the literal "Root".
+      const looksDefault =
+        rootName === "" ||
+        rootName === "Root" ||
+        EXAMPLES.some((e) => e.rootName === rootName);
+      if (looksDefault) rootName = c.rootHint;
+    }
+    curlNotice = `Detected curl — extracted body${c.rootHint ? ` and set root to ${c.rootHint}` : ""}.`;
+    setTimeout(() => { curlNotice = null; }, 2400);
   });
 
   function jumpToWarning(d: Diagnostic) {
@@ -386,6 +415,9 @@
 
 {#if shareNotice}
   <p class="share-notice">{shareNotice}</p>
+{/if}
+{#if curlNotice}
+  <p class="share-notice">{curlNotice}</p>
 {/if}
 {#if formatterError}
   <p class="share-notice error">zig fmt failed ({formatterError}); showing unformatted output.</p>

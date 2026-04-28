@@ -115,6 +115,8 @@ WASM `zig fmt` runs in the browser via a lazy WASM init. Per-field overrides liv
 
 The toolbar's **More…** row exposes four output variants that match the CLI's `--with-*` flags: copy a `parse<Root>` helper, copy a `build.zig` dependency snippet, copy a `test "parse <Root>"` scaffold seeded from the active sample, and download the schema report (the same JSON `--report` writes).
 
+**Curl paste**: the active editor recognises a pasted `curl …` command (with or without a leading `$ ` prompt). It extracts the `-d` / `--data` / `--data-raw` payload as the new sample and seeds the root struct name from the URL path's last identifier-like segment (`/v1/users/42` → `User`). Numeric and UUID-shaped path segments are skipped automatically.
+
 Per-format landing pages: `/json-to-zig-struct`, `/yaml-to-zig-struct`, `/toml-to-zig-struct`, `/xml-to-zig-struct`, plus their `…-to-serde-zig` variants. Each pins format + target + preset and ships SEO meta + JSON-LD.
 
 ## VS Code extension

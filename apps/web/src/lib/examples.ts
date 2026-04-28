@@ -192,4 +192,24 @@ json = []
 </rss>`,
     ],
   },
+  {
+    id: "soap-envelope",
+    label: "SOAP envelope",
+    rootName: "Envelope",
+    target: "serde-zig",
+    samples: [
+      `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Header>
+    <auth:Credentials xmlns:auth="urn:auth">
+      <auth:Token>abc123</auth:Token>
+    </auth:Credentials>
+  </soap:Header>
+  <soap:Body>
+    <m:GetUser xmlns:m="urn:users">
+      <m:Id>42</m:Id>
+    </m:GetUser>
+  </soap:Body>
+</soap:Envelope>`,
+    ],
+  },
 ];

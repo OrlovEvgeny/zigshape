@@ -6,9 +6,10 @@
   import { Compartment, EditorSelection, EditorState, StateEffect, StateField } from "@codemirror/state";
   import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
   import { basicSetup } from "codemirror";
+  import { zig } from "$lib/zig-lang";
 
   export type HighlightRange = { from: number; length: number; nonce: number };
-  export type EditorLanguage = "json" | "yaml" | "toml" | "xml" | "plain";
+  export type EditorLanguage = "json" | "yaml" | "toml" | "xml" | "zig" | "plain";
 
   type Props = {
     value: string;
@@ -60,6 +61,7 @@
     if (lang === "json") return json();
     if (lang === "yaml") return yaml();
     if (lang === "xml") return xml();
+    if (lang === "zig") return zig();
     return [];
   }
 

@@ -490,7 +490,7 @@
   </div>
   <div class="pane">
     <h2>Zig</h2>
-    <Editor value={displayCode || "// (waiting for valid input)"} language="plain" readonly />
+    <Editor value={displayCode || "// (waiting for valid input)"} language="zig" readonly />
   </div>
 </section>
 

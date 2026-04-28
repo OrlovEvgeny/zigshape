@@ -52,23 +52,40 @@ When variant names differ from the wire values (`in_progress` ← `in-progress`)
 
 ## Tagged union inference
 
-Opt-in via `--unions tagged`. Triggers when:
+Opt-in via `--unions internal|external|adjacent|untagged` (`tagged` is accepted as a back-compat alias for `internal`). Detection triggers when:
 - The shape is an array of objects.
 - A discriminator field is present in every object as a string.
 - At least 2 distinct discriminator values exist.
 
 Preferred discriminator names (in order): `type`, `kind`, `_type`, `_tag`, `__typename`. Falls back to any string field meeting the criteria, preferring the one with the most distinct values.
 
-For each distinct tag value, the corresponding variant struct is the union of fields observed when that tag is present (minus the tag field itself). The serde target emits:
+For each distinct tag value, the corresponding variant struct is the union of fields observed when that tag is present (minus the tag field itself). The serde target emits a `pub const serde = ...` block keyed by the chosen tagging style:
 
 ```zig
+// --unions internal (default once enabled)
+pub const serde = .{ .tag = serde.UnionTag.internal, .tag_field = "type" };
+
+// --unions external
+pub const serde = .{ .tag = serde.UnionTag.external };
+
+// --unions adjacent
 pub const serde = .{
-    .tag = serde.UnionTag.internal,
+    .tag = serde.UnionTag.adjacent,
     .tag_field = "type",
+    .content_field = "data",
 };
+
+// --unions untagged
+pub const serde = .{ .tag = serde.UnionTag.untagged };
 ```
 
+Untagged unions emit `infer.union_untagged_overlap` when two variant bodies are structurally identical — serde.zig cannot disambiguate them at runtime.
+
 Default `--unions off` keeps the v0.1 behavior: heterogeneous arrays fall back to `std.json.Value`.
+
+## String-shape hints
+
+Independent of enum suggestion, `infer.string_shape` fires whenever every observed value of a string field matches the same recognisable shape: ISO-8601 datetime, UUID, URL, or email. The emitted Zig type is unchanged (`[]const u8`); only the diagnostic surfaces the hint. Use a per-field override (`zigshape.json` `overrides[$.path].type`) to swap in a custom adapter type.
 
 ## Heterogeneous fallback
 

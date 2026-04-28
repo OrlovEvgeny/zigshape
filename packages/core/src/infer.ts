@@ -1,11 +1,57 @@
 import { DiagnosticBag } from "./diagnostics";
-import { DEFAULT_OPTIONS, withDefaults, type ZigshapeOptions } from "./options";
+import { DEFAULT_OPTIONS, withDefaults, type UnionStrategy, type ZigshapeOptions } from "./options";
 import { observeSamples, ROOT_PATH, type Observation, type ObservationMap, type ValueKind } from "./observe";
-import { shapesEqual, type EnumVariant, type FieldShape, type Shape, type UnionVariant } from "./shape";
+import {
+  shapesEqual,
+  type EnumVariant,
+  type FieldShape,
+  type Shape,
+  type UnionTaggingStyle,
+  type UnionVariant,
+} from "./shape";
 import { sanitizeFieldName, sanitizeStructName } from "./zig/identifier";
 import type { ZObject, ZValue } from "./value";
 
 const TAG_FIELD_PREFERENCES = ["type", "kind", "_type", "_tag", "__typename"];
+
+/** Anchored regexes for recognisable string shapes.  Used by `inferString` to
+ *  emit `infer.string_shape` warnings when every observed value of a field
+ *  matches the same classifier.  Type stays `[]const u8` — the warning is a
+ *  hint, not a type change (per the explainability-first design). */
+type StringShape = "iso8601" | "uuid" | "url" | "email";
+const STRING_SHAPE_PATTERNS: Record<StringShape, RegExp> = {
+  iso8601:
+    /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/,
+  uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+  url: /^https?:\/\/[^\s]+$/,
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+};
+
+function classifyStringShape(s: string): StringShape | null {
+  if (STRING_SHAPE_PATTERNS.iso8601.test(s)) return "iso8601";
+  if (STRING_SHAPE_PATTERNS.uuid.test(s)) return "uuid";
+  if (STRING_SHAPE_PATTERNS.email.test(s)) return "email";
+  if (STRING_SHAPE_PATTERNS.url.test(s)) return "url";
+  return null;
+}
+
+function classifyAllSamples(samples: Map<string, number>): StringShape | null {
+  if (samples.size === 0) return null;
+  let style: StringShape | null = null;
+  for (const v of samples.keys()) {
+    const c = classifyStringShape(v);
+    if (c === null) return null;
+    if (style === null) style = c;
+    else if (style !== c) return null;
+  }
+  return style;
+}
+
+function resolveTaggingStyle(s: UnionStrategy): UnionTaggingStyle | null {
+  if (s === "off") return null;
+  if (s === "tagged") return "internal";
+  return s;
+}
 
 export type InferenceResult = {
   root: Shape;
@@ -87,14 +133,15 @@ function inferSingleKind(
       const elementPath = path + "[*]";
       const elementObs = obs.get(elementPath);
       // Try tagged-union detection at the element position.
+      const taggingStyle = resolveTaggingStyle(opts.unions);
       if (
-        opts.unions === "tagged" &&
+        taggingStyle &&
         elementObs &&
         !elementObs.objectItemsOverflowed &&
         elementObs.objectItems &&
         elementObs.objectItems.length >= 2
       ) {
-        const union = inferUnion(elementPath, elementObs.objectItems, opts, diag);
+        const union = inferUnion(elementPath, elementObs.objectItems, taggingStyle, opts, diag);
         if (union) return { kind: "array", element: union };
       }
       const element = inferAt(elementPath, obs, opts, diag);
@@ -113,6 +160,21 @@ function inferString(
   opts: ZigshapeOptions,
   diag: DiagnosticBag,
 ): Shape {
+  // String-shape hint: emit a warning when every observed value at this path
+  // matches the same recognisable shape (ISO-8601 datetime / UUID / URL /
+  // email).  Type stays `[]const u8` — we surface the hint without silently
+  // changing types, consistent with the explainability-first design.
+  if (o.stringSamples && o.stringSamples.size > 0 && !o.stringSamplesOverflowed) {
+    const shape = classifyAllSamples(o.stringSamples);
+    if (shape) {
+      diag.warn(
+        "infer.string_shape",
+        `Strings at ${path} look like ${shape}; emitted as []const u8. Override the field for a custom type.`,
+        { path },
+      );
+    }
+  }
+
   if (opts.enums === "off") return { kind: "string" };
   const samples = o.stringSamples;
   if (!samples || samples.size === 0) return { kind: "string" };
@@ -290,6 +352,7 @@ function inferAliases(
 function inferUnion(
   elementPath: string,
   items: ZValue[],
+  taggingStyle: UnionTaggingStyle,
   opts: ZigshapeOptions,
   diag: DiagnosticBag,
 ): Shape | null {
@@ -330,11 +393,27 @@ function inferUnion(
 
   diag.warn(
     "infer.union_candidate",
-    `Array at ${elementPath} treated as tagged union on '${tagField}' (${variants.length} variants)`,
+    `Array at ${elementPath} treated as ${taggingStyle}-tagged union on '${tagField}' (${variants.length} variants)`,
     { path: elementPath },
   );
 
-  return { kind: "union", path: elementPath, tagField, variants };
+  // Untagged unions rely on serde.zig disambiguating variants by structure
+  // alone — flag overlaps the user must resolve manually.
+  if (taggingStyle === "untagged") {
+    for (let i = 0; i < variants.length; i++) {
+      for (let j = i + 1; j < variants.length; j++) {
+        if (shapesEqual(variants[i]!.shape, variants[j]!.shape)) {
+          diag.warn(
+            "infer.union_untagged_overlap",
+            `Untagged union at ${elementPath} has structurally identical variants '${variants[i]!.tagValue}' and '${variants[j]!.tagValue}'; serde.zig cannot disambiguate them`,
+            { path: elementPath },
+          );
+        }
+      }
+    }
+  }
+
+  return { kind: "union", path: elementPath, tagField, variants, taggingStyle };
 }
 
 function pickTagField(objects: ZObject[]): string | null {

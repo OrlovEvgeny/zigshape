@@ -2,7 +2,17 @@ import type { Format } from "./parsers/types";
 
 export type IntStrategy = "smallest" | "u64" | "i64";
 export type EnumStrategy = "auto" | "off" | "always";
-export type UnionStrategy = "off" | "tagged";
+/** Union inference + emit strategy.  `off` disables detection.  The four
+ *  serde tagging styles control how `pub const serde = ...` is emitted; the
+ *  shape-detection logic itself (discriminator-based) is identical across
+ *  them.  `tagged` is a back-compat alias for `internal`. */
+export type UnionStrategy =
+  | "off"
+  | "internal"
+  | "external"
+  | "adjacent"
+  | "untagged"
+  | "tagged";
 export type AliasStrategy = "auto" | "off";
 export type StringStrategy = "slice" | "mut" | "sentinel";
 export type MapStrategy = "auto" | "struct" | "hash-map";

@@ -4,7 +4,9 @@ What zigshape cannot infer perfectly today, why, and what to do about it.
 
 ## Datetimes are strings
 
-JSON has no native datetime type. YAML can parse a scalar as a Date depending on schema. TOML has dedicated datetime literals. zigshape emits `[]const u8` for all of them and warns when a scalar looks ISO-8601-shaped.
+JSON has no native datetime type. YAML can parse a scalar as a Date depending on schema. TOML has dedicated datetime literals. zigshape emits `[]const u8` for all of them.
+
+The `infer.string_shape` warning fires when every observed value of a field matches a recognisable shape — ISO-8601 datetime, UUID, URL, or email. The type stays `[]const u8`; only the warning surfaces the hint, so the inferred wire shape is never silently changed.
 
 **Workaround:** override the field via the inspector or `zigshape.json`:
 ```json
@@ -40,7 +42,9 @@ This avoids guessing the wrong interpretation for genuine list-shaped APIs.
 
 ## `union(enum)` tagging styles
 
-serde.zig supports four tagging styles: `external`, `internal`, `adjacent`, `untagged`. zigshape currently only emits `internal` (the most common JSON discriminator pattern). The other three are reachable via per-field overrides.
+serde.zig supports four tagging styles: `internal`, `external`, `adjacent`, `untagged`. All four are reachable via the `--unions` flag (`internal` remains the default and the legacy `--unions tagged` is accepted as an alias). The `infer.union_untagged_overlap` warning fires when two variant bodies are structurally identical — at runtime serde.zig cannot disambiguate them.
+
+The shape-detection trigger is the same for all four styles (a discriminator string field present in every array element); the flag only changes how the `pub const serde = .{ .tag = serde.UnionTag.<x>, ... }` block is emitted. Adjacent tagging emits `.content_field = "data"` by default; override the field path in `zigshape.json` if you need a different content field name.
 
 ## Enum suggestion is a heuristic
 

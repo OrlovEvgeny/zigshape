@@ -1,5 +1,5 @@
 import type { Observation, ObservationMap } from "./observe";
-import type { FieldShape, Shape, UnionVariant } from "./shape";
+import type { FieldShape, Shape, UnionTaggingStyle, UnionVariant } from "./shape";
 import { escapeZigString, sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
 import { pickIntWidth, type ZigStringRepr, type ZigType } from "./zig/types";
 import type { StringStrategy } from "./options";
@@ -84,6 +84,10 @@ export type UnionDecl = {
   name: string;
   path: string;
   tagField: string;
+  /** Which serde tagging style the decorator should emit.  Inference
+   *  groups variants the same way for all four styles (by discriminator);
+   *  this flag only affects the emitted `pub const serde = ...` block. */
+  taggingStyle: UnionTaggingStyle;
   variants: UnionDeclVariant[];
 };
 
@@ -216,6 +220,7 @@ function walkUnion(
     name,
     path: shape.path,
     tagField: shape.tagField,
+    taggingStyle: shape.taggingStyle,
     variants: [],
   };
   state.decls.push(decl);

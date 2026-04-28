@@ -66,15 +66,34 @@ export function serdeDecorator(
 function buildUnionBlock(decl: UnionDecl): string[] {
   const lines: string[] = [];
   lines.push("pub const serde = .{");
-  lines.push(`    .tag = serde.UnionTag.internal,`);
-  lines.push(`    .tag_field = "${escapeZigString(decl.tagField)}",`);
-  const renamed = decl.variants.filter((v) => v.renamed);
-  if (renamed.length > 0) {
-    lines.push("    .rename = .{");
-    for (const v of renamed) {
-      lines.push(`        .${v.zigName} = "${escapeZigString(v.tagValue)}",`);
+  switch (decl.taggingStyle) {
+    case "internal":
+      lines.push(`    .tag = serde.UnionTag.internal,`);
+      lines.push(`    .tag_field = "${escapeZigString(decl.tagField)}",`);
+      break;
+    case "external":
+      lines.push(`    .tag = serde.UnionTag.external,`);
+      break;
+    case "adjacent":
+      lines.push(`    .tag = serde.UnionTag.adjacent,`);
+      lines.push(`    .tag_field = "${escapeZigString(decl.tagField)}",`);
+      lines.push(`    .content_field = "data",`);
+      break;
+    case "untagged":
+      lines.push(`    .tag = serde.UnionTag.untagged,`);
+      break;
+  }
+  // `rename` only matters when there's a tag the wire format actually uses.
+  // Untagged variants are matched by structure, so renames are irrelevant.
+  if (decl.taggingStyle !== "untagged") {
+    const renamed = decl.variants.filter((v) => v.renamed);
+    if (renamed.length > 0) {
+      lines.push("    .rename = .{");
+      for (const v of renamed) {
+        lines.push(`        .${v.zigName} = "${escapeZigString(v.tagValue)}",`);
+      }
+      lines.push("    },");
     }
-    lines.push("    },");
   }
   lines.push("};");
   return lines;

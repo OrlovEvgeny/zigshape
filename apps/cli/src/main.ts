@@ -78,7 +78,10 @@ Inference options:
   --strings slice|mut|sentinel   String wire form. slice = []const u8 (default).
   --maps auto|struct|hash-map    Map detection override. Default: auto.
   --enums auto|off|always        Enum suggestion. Default: auto.
-  --unions off|tagged            Tagged-union inference. Default: off.
+  --unions off|internal|external|adjacent|untagged
+                                 Tagged-union inference + serde tagging
+                                 style. Default: off. 'tagged' is accepted
+                                 as a back-compat alias for 'internal'.
   --aliases auto|off             Cross-sample alias detection. Default: auto.
   --deny-unknown-fields          Emit serde .deny_unknown_fields = true.
   --defaults-from-samples        Emit observed scalar values as Zig defaults.
@@ -190,8 +193,17 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case "--unions": {
         const v = next() as UnionStrategy | undefined;
-        if (v !== "off" && v !== "tagged") {
-          throw new Error(`--unions must be off|tagged (got '${v}')`);
+        if (
+          v !== "off" &&
+          v !== "tagged" &&
+          v !== "internal" &&
+          v !== "external" &&
+          v !== "adjacent" &&
+          v !== "untagged"
+        ) {
+          throw new Error(
+            `--unions must be off|internal|external|adjacent|untagged (got '${v}')`,
+          );
         }
         args.unions = v;
         args.explicit.add("unions");

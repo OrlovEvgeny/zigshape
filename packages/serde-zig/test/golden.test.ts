@@ -18,6 +18,9 @@ const FIXTURES: Record<string, FixtureCfg> = {
   "nested-camel": { rootName: "User" },
   "enum-rename": { rootName: "Task", options: { enums: "always" } },
   "union-commands": { rootName: "Commands", options: { unions: "tagged" } },
+  "union-external": { rootName: "Commands", options: { unions: "external" } },
+  "union-adjacent": { rootName: "Commands", options: { unions: "adjacent" } },
+  "union-untagged": { rootName: "Commands", options: { unions: "untagged" } },
   "xml-user": { rootName: "User" },
   // The "ideal output" example from the original product spec — locks the
   // public-facing serde.zig output so future inference / formatter changes

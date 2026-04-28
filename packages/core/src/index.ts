@@ -25,7 +25,14 @@ export {
 export { DiagnosticBag, type Diagnostic, type Severity } from "./diagnostics";
 export { observeSamples, ROOT_PATH, type Observation, type ObservationMap, type ValueKind } from "./observe";
 export { infer, type InferenceResult, type InferOptions } from "./infer";
-export type { Shape, FieldShape, EnumVariant, UnionVariant, UnknownReason } from "./shape";
+export type {
+  Shape,
+  FieldShape,
+  EnumVariant,
+  UnionVariant,
+  UnionTaggingStyle,
+  UnknownReason,
+} from "./shape";
 export { shapesEqual } from "./shape";
 export {
   normalize,

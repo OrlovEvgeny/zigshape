@@ -1,0 +1,8 @@
+[
+  [
+    { "type": "ping" },
+    { "type": "execute", "query": "SELECT 1" },
+    { "type": "ping" },
+    { "type": "execute", "query": "SELECT 2" }
+  ]
+]

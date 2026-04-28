@@ -8,8 +8,16 @@ export type Shape =
   | { kind: "object"; path: string; fields: Map<string, FieldShape> }
   | { kind: "map"; valuePath: string; value: Shape }
   | { kind: "enum"; path: string; variants: EnumVariant[] }
-  | { kind: "union"; path: string; tagField: string; variants: UnionVariant[] }
+  | {
+      kind: "union";
+      path: string;
+      tagField: string;
+      variants: UnionVariant[];
+      taggingStyle: UnionTaggingStyle;
+    }
   | { kind: "unknown"; reason: UnknownReason };
+
+export type UnionTaggingStyle = "internal" | "external" | "adjacent" | "untagged";
 
 export type UnionVariant = {
   /** Tag value as it appeared in the wire data. */
@@ -94,6 +102,7 @@ export function shapesEqual(a: Shape, b: Shape): boolean {
     case "union": {
       const bu = b as typeof a;
       if (a.tagField !== bu.tagField) return false;
+      if (a.taggingStyle !== bu.taggingStyle) return false;
       if (a.variants.length !== bu.variants.length) return false;
       const aTags = new Set(a.variants.map((v) => v.tagValue));
       for (const v of bu.variants) if (!aTags.has(v.tagValue)) return false;

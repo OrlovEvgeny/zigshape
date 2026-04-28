@@ -57,7 +57,13 @@
 
   const startExample = initialExample ?? EXAMPLES[0]!;
 
-  let samples = $state<string[]>([...startExample.samples]);
+  // Open with a single sample — the user's stated mental model is "see one
+  // example, erase it, type something new". Multi-sample examples (loaded
+  // from the toolbar dropdown via loadExample) keep all their samples; only
+  // the *initial* boot trims to the first one. SEO landing pages already
+  // pass single-sample examples via `initialExample`, so this only changes
+  // the root playground.
+  let samples = $state<string[]>([startExample.samples[0] ?? ""]);
   let activeIndex = $state(0);
   let rootName = $state(initialRootName ?? startExample.rootName);
   let target = $state<"plain" | "serde-zig">(initialTarget ?? startExample.target);

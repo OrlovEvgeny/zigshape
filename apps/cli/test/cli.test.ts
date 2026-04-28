@@ -2,22 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const ENTRY = new URL("../src/main.ts", import.meta.url).pathname;
-
-async function runCli(args: string[], stdin?: string): Promise<{ stdout: string; stderr: string; code: number }> {
-  const proc = Bun.spawn(["bun", ENTRY, ...args], {
-    stdin: stdin === undefined ? "ignore" : new Response(stdin),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  return { stdout, stderr, code };
-}
+import { runCli } from "./_helpers";
 
 describe("cli", () => {
   test("--help exits 0 and prints usage", async () => {

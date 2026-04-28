@@ -416,7 +416,10 @@ function severityPrefix(sev: string): string {
   return "info";
 }
 
-export async function run(argv: readonly string[]): Promise<number> {
+export async function run(
+  argv: readonly string[],
+  options: { stdinText?: string } = {},
+): Promise<number> {
   let args: Args;
   try {
     args = parseArgs(argv);
@@ -499,7 +502,9 @@ export async function run(argv: readonly string[]): Promise<number> {
 
   let samples: string[];
   if (args.stdin || args.files.length === 0) {
-    samples = [await Bun.stdin.text()];
+    samples = [
+      options.stdinText !== undefined ? options.stdinText : await Bun.stdin.text(),
+    ];
   } else {
     try {
       // Expand any directory args into the matching files under them.  A

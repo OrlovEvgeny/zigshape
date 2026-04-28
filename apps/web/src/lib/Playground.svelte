@@ -25,6 +25,7 @@
     parseSample,
     pathSrcMap,
     runPipeline,
+    suggestRootName,
     type Decl,
     type Diagnostic,
     type FieldOverride,
@@ -66,6 +67,12 @@
   let samples = $state<string[]>([startExample.samples[0] ?? ""]);
   let activeIndex = $state(0);
   let rootName = $state(initialRootName ?? startExample.rootName);
+  // Track whether the user has hand-edited the rootName input. Until
+  // they do, the smart-suggestion effect below keeps `rootName` in sync
+  // with whatever the parsed sample suggests (XML root tag, single-key
+  // wrapper, kind/type/__typename discriminator). A manual edit pins
+  // it.
+  let rootNameTouched = $state(false);
   let target = $state<"plain" | "serde-zig">(initialTarget ?? startExample.target);
   let format = $state<FormatArg>(initialFormat);
   let presetId = $state<PresetId>(initialPreset);
@@ -138,6 +145,25 @@
   });
 
   const displayCode = $derived(formattedCode ?? generated.code);
+
+  // Auto-suggest a root name from the active sample's structure.  Runs
+  // against the parser (not the inference output) so it works even when
+  // multiple samples disagree.  Only writes back to `rootName` when the
+  // user hasn't pinned it manually.
+  const suggestedRoot = $derived.by(() => {
+    const sample = samples[activeIndex] ?? "";
+    if (!sample.trim()) return null;
+    const r = parseSample(sample, activeIndex, format);
+    if (!r.value) return null;
+    return suggestRootName(r.value, {
+      xmlRoot: r.xmlRoot,
+      treatRootArrayAsSamples: presetOptions.treatRootArrayAsSamples,
+    });
+  });
+  $effect(() => {
+    if (rootNameTouched) return;
+    if (suggestedRoot && suggestedRoot !== rootName) rootName = suggestedRoot;
+  });
 
   // zig fmt always runs in the background — the user shouldn't have to
   // think about it. WASM init is lazy, so the first format pays the load
@@ -313,6 +339,9 @@
     const decoded = decodeShareHash(window.location.hash);
     if (!decoded) return;
     rootName = decoded.rootName;
+    // Share links carry the user's explicit choice; pin so the auto-suggest
+    // effect doesn't trample it.
+    rootNameTouched = true;
     target = decoded.target;
     format = decoded.format;
     presetId = decoded.presetId;
@@ -432,6 +461,8 @@
   onCopyBuildSnippet={copyBuildSnippet}
   onCopyTestScaffold={copyTestScaffold}
   onDownloadReport={downloadReport}
+  onRootNameInput={() => (rootNameTouched = true)}
+  suggestedRoot={suggestedRoot}
   canCopy={!!displayCode}
 />
 

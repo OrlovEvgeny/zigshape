@@ -56,6 +56,7 @@ export {
   pickIntWidth,
 } from "./zig/types";
 export { escapeZigString, sanitizeFieldName, sanitizeStructName, toSnakeCase, toPascalCase, singularize } from "./zig/identifier";
+export { suggestRootName } from "./zig/root-name";
 export { generateZig, type GenerateOptions } from "./generate";
 export {
   emitParserHelper,

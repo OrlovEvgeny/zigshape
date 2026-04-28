@@ -22,7 +22,9 @@
     onCopyBuildSnippet: () => void;
     onCopyTestScaffold: () => void;
     onDownloadReport: () => void;
+    onRootNameInput?: () => void;
     canCopy: boolean;
+    suggestedRoot?: string | null;
   };
 
   let {
@@ -42,7 +44,9 @@
     onCopyBuildSnippet,
     onCopyTestScaffold,
     onDownloadReport,
+    onRootNameInput,
     canCopy,
+    suggestedRoot = null,
   }: Props = $props();
 
   let extrasOpen = $state(false);
@@ -62,7 +66,13 @@
 
 <div class="toolbar">
   <label>Root struct
-    <input bind:value={rootName} placeholder="User" spellcheck="false" />
+    <input
+      bind:value={rootName}
+      oninput={() => onRootNameInput?.()}
+      placeholder={suggestedRoot ?? "User"}
+      spellcheck="false"
+      title={suggestedRoot ? `Auto-suggested from input shape: ${suggestedRoot}` : undefined}
+    />
   </label>
   <label>Format
     <select bind:value={format}>

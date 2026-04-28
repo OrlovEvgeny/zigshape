@@ -67,6 +67,7 @@ export {
   type StringStrategy,
   type MapStrategy,
   type ArrayStrategy,
+  type UnknownStrategy,
   DEFAULT_OPTIONS,
   withDefaults,
 } from "./options";

@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   buildReport,
   diffReports,
@@ -19,6 +21,7 @@ import {
   type SchemaReport,
   type StringStrategy,
   type UnionStrategy,
+  type UnknownStrategy,
   type ZigshapeOptions,
 } from "@zigshape/core";
 import { serdeDecorator, type RenameAllStrategy } from "@zigshape/serde-zig";
@@ -36,6 +39,7 @@ type Args = {
   stringStrategy: StringStrategy;
   mapStrategy: MapStrategy;
   arrayStrategy: ArrayStrategy;
+  unknownStrategy: UnknownStrategy;
   enums: EnumStrategy;
   unions: UnionStrategy;
   aliases: AliasStrategy;
@@ -61,8 +65,12 @@ type Args = {
 const HELP = `zigshape — generate Zig structs from JSON / YAML / TOML / XML
 
 Usage:
-  zigshape <file>... [options]
+  zigshape <file-or-dir-or-url>... [options]
   zigshape --stdin   [options]
+
+Directory args are walked recursively; files matching the active --format
+extension(s) become samples (each file = one sample). With --format auto,
+.json / .ndjson / .yaml / .yml / .toml / .xml are picked up.
 
 Input options:
   --format auto|json|ndjson|yaml|toml|xml
@@ -91,7 +99,10 @@ Output options:
                                  dependency wiring (no-op for plain target).
 
 Inference options:
-  --int smallest|u64|i64         Integer width strategy. Default: smallest.
+  --int smallest|u64|i64|usize   Integer width strategy. Default: smallest.
+                                 usize emits usize for non-negative
+                                 observations and isize when any sample
+                                 was negative.
   --strings slice|mut|sentinel   String wire form. slice = []const u8 (default).
   --maps auto|struct|hash-map    Map detection override. Default: auto.
   --arrays slice|arraylist|fixed Array codegen strategy.  slice = []const T
@@ -99,6 +110,10 @@ Inference options:
                                  fixed = [N]T when every observation has the
                                  same length, else falls back to slice with
                                  the infer.fixed_length_unstable warning.
+  --unknown CONV                 Strategy for shapes inference can't pin down
+                                 (only-null / heterogeneous mixed scalars).
+                                 CONV is std-json-value (default),
+                                 serde-value, string, or compile-error.
   --rename-all CONV              Force a serde naming convention instead of
                                  the auto-detect heuristic. CONV is one of
                                  auto (default), none, snake_case,
@@ -131,6 +146,7 @@ function parseArgs(argv: readonly string[]): Args {
     stringStrategy: "slice",
     mapStrategy: "auto",
     arrayStrategy: "slice",
+    unknownStrategy: "std-json-value",
     enums: "auto",
     unions: "off",
     aliases: "auto",
@@ -189,8 +205,8 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case "--int": {
         const v = next() as IntStrategy | undefined;
-        if (v !== "smallest" && v !== "u64" && v !== "i64") {
-          throw new Error(`--int must be smallest|u64|i64 (got '${v}')`);
+        if (v !== "smallest" && v !== "u64" && v !== "i64" && v !== "usize") {
+          throw new Error(`--int must be smallest|u64|i64|usize (got '${v}')`);
         }
         args.intStrategy = v;
         args.explicit.add("intStrategy");
@@ -221,6 +237,22 @@ function parseArgs(argv: readonly string[]): Args {
         }
         args.arrayStrategy = v;
         args.explicit.add("arrayStrategy");
+        break;
+      }
+      case "--unknown": {
+        const v = next() as UnknownStrategy | undefined;
+        if (
+          v !== "std-json-value" &&
+          v !== "serde-value" &&
+          v !== "string" &&
+          v !== "compile-error"
+        ) {
+          throw new Error(
+            `--unknown must be std-json-value|serde-value|string|compile-error (got '${v}')`,
+          );
+        }
+        args.unknownStrategy = v;
+        args.explicit.add("unknownStrategy");
         break;
       }
       case "--rename-all": {
@@ -333,6 +365,41 @@ function parseArgs(argv: readonly string[]): Args {
   return args;
 }
 
+/** Map of explicit `--format` value to the file extensions that should be
+ *  pulled in when walking a directory.  `auto` accepts every recognised
+ *  format. */
+const DIR_MODE_EXTENSIONS: Record<FormatArg, readonly string[]> = {
+  auto: [".json", ".ndjson", ".yaml", ".yml", ".toml", ".xml"],
+  json: [".json"],
+  ndjson: [".ndjson"],
+  yaml: [".yaml", ".yml"],
+  toml: [".toml"],
+  xml: [".xml"],
+};
+
+/** Recursively collect files under a directory whose extensions match the
+ *  active format filter.  Sorted for deterministic ordering across runs. */
+async function collectFilesUnder(dir: string, format: FormatArg): Promise<string[]> {
+  const exts = DIR_MODE_EXTENSIONS[format];
+  const out: string[] = [];
+  async function walk(d: string): Promise<void> {
+    const entries = await readdir(d, { withFileTypes: true });
+    for (const e of entries) {
+      const full = join(d, e.name);
+      if (e.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      if (!e.isFile()) continue;
+      const lower = e.name.toLowerCase();
+      if (exts.some((x) => lower.endsWith(x))) out.push(full);
+    }
+  }
+  await walk(dir);
+  out.sort();
+  return out;
+}
+
 function severityPrefix(sev: string): string {
   if (sev === "error") return "error";
   if (sev === "warning") return "warning";
@@ -425,8 +492,41 @@ export async function run(argv: readonly string[]): Promise<number> {
     samples = [await Bun.stdin.text()];
   } else {
     try {
+      // Expand any directory args into the matching files under them.  A
+      // directory is only valid if `--format` is explicit OR the listed
+      // files all match a single recognised extension; otherwise we'd be
+      // guessing.  Files passed directly are unfiltered.
+      const expanded: string[] = [];
+      for (const f of args.files) {
+        if (/^https?:\/\//i.test(f)) {
+          expanded.push(f);
+          continue;
+        }
+        let isDir = false;
+        try {
+          isDir = (await stat(f)).isDirectory();
+        } catch {
+          // Treat unreadable paths as files; the read below surfaces the
+          // real error.
+        }
+        if (!isDir) {
+          expanded.push(f);
+          continue;
+        }
+        const matches = await collectFilesUnder(f, args.format);
+        if (matches.length === 0) {
+          throw new Error(
+            `directory ${f}: no files matching ` +
+              (args.format === "auto"
+                ? "*.json|*.ndjson|*.yaml|*.yml|*.toml|*.xml"
+                : `*.${args.format}`) +
+              " (pass --format to widen the filter, or list files explicitly)",
+          );
+        }
+        expanded.push(...matches);
+      }
       samples = await Promise.all(
-        args.files.map(async (f) => {
+        expanded.map(async (f) => {
           if (/^https?:\/\//i.test(f)) {
             // Fetch http(s) URLs at runtime so users can pass an API endpoint
             // directly: `zigshape https://api.example.com/user --root User`.
@@ -453,6 +553,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     strings: args.stringStrategy,
     maps: args.mapStrategy,
     arrays: args.arrayStrategy,
+    unknown: args.unknownStrategy,
     enums: args.enums,
     unions: args.unions,
     aliases: args.aliases,

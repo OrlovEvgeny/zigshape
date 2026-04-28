@@ -1,6 +1,6 @@
 import type { Format } from "./parsers/types";
 
-export type IntStrategy = "smallest" | "u64" | "i64";
+export type IntStrategy = "smallest" | "u64" | "i64" | "usize";
 export type EnumStrategy = "auto" | "off" | "always";
 /** Union inference + emit strategy.  `off` disables detection.  The four
  *  serde tagging styles control how `pub const serde = ...` is emitted; the
@@ -21,6 +21,18 @@ export type MapStrategy = "auto" | "struct" | "hash-map";
  *  when every observation of the array has length N; otherwise falls back to
  *  slice and emits `infer.fixed_length_unstable`. */
 export type ArrayStrategy = "slice" | "arraylist" | "fixed";
+/** What to emit for a shape with no usable inference signal (only-null or
+ *  heterogeneous fallback).
+ *  - `std-json-value` (default): `std.json.Value` — every payload round-trips.
+ *  - `serde-value`: `serde.Value` from serde.zig.
+ *  - `string`: `[]const u8` — pass the wire form through unchanged.
+ *  - `compile-error`: `@compileError("...")` so the file refuses to compile
+ *    until the user replaces the type by hand. */
+export type UnknownStrategy =
+  | "std-json-value"
+  | "serde-value"
+  | "string"
+  | "compile-error";
 
 export type ZigshapeOptions = {
   format: "auto" | Format;
@@ -41,6 +53,9 @@ export type ZigshapeOptions = {
   maps: MapStrategy;
   /** Array codegen strategy.  See `ArrayStrategy`. */
   arrays: ArrayStrategy;
+  /** What to emit when inference can't pick a concrete type (only-null,
+   *  heterogeneous mixed scalars, etc).  See `UnknownStrategy`. */
+  unknown: UnknownStrategy;
   /** When true and a sample's root is an array, each item of the array is
    *  observed as an independent sample for inference purposes.  NDJSON input
    *  forces this on; users can also opt in for plain JSON arrays they want
@@ -63,6 +78,7 @@ export const DEFAULT_OPTIONS: ZigshapeOptions = {
   strings: "slice",
   maps: "auto",
   arrays: "slice",
+  unknown: "std-json-value",
   treatRootArrayAsSamples: false,
   mapMinKeys: 4,
   enumMaxVariants: 8,

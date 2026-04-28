@@ -32,6 +32,10 @@ Tracked as a v1.1 follow-up; would require a hand-rolled span tracker for both f
 
 `<description lang="en">Hello</description>` is mixed: `lang` is an attribute, `Hello` is the text body. serde.zig documents `xml_attribute` and `xml_root` but does not yet document a text-node mapping. zigshape generates a `value` field plus a `// TODO:` comment so the user explicitly verifies the wire behavior.
 
+## XML CDATA boundaries
+
+`fast-xml-parser` merges CDATA sections into the surrounding text node without preserving the `<![CDATA[ ... ]]>` markers. `parse.xml_cdata` warns when the input contained CDATA so the user knows the inferred field can't represent the original wire form precisely; the textual *content* of the CDATA is preserved.
+
 ## NDJSON / array-of-samples confidence
 
 When the root of a sample is an array, zigshape needs to know whether the array IS the data (becomes `[]const T`) or whether the array's elements are *samples* of T. The pipeline picks the second interpretation only when:

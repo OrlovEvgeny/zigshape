@@ -29,6 +29,11 @@ export function generateZig(result: NormalizeResult, options: GenerateOptions = 
   const lines: string[] = [];
   const imports: string[] = [];
   if (result.needsStd) imports.push('const std = @import("std");');
+  // Dedup serde import: needsSerde fires from --unknown serde-value, while
+  // the serde decorator may also have requested it via extraImports.
+  const serdeImport = 'const serde = @import("serde");';
+  const serdeAlreadyInExtra = (options.extraImports ?? []).includes(serdeImport);
+  if (result.needsSerde && !serdeAlreadyInExtra) imports.push(serdeImport);
   for (const im of options.extraImports ?? []) imports.push(im);
   if (imports.length > 0) {
     lines.push(...imports);

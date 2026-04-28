@@ -33,6 +33,20 @@ export function parseXml(input: string, sampleIndex: number): ParseResult {
     );
   }
 
+  // fast-xml-parser merges CDATA sections into the surrounding text node
+  // without a marker, so the CDATA boundary disappears from the inferred
+  // shape.  We can't recover it after parsing — surface a warning so the
+  // user knows the wire content (which may contain XML reserved characters
+  // intentionally preserved by CDATA) won't round-trip through the
+  // generated struct.
+  if (input.includes("<![CDATA[")) {
+    diagnostics.warn(
+      "parse.xml_cdata",
+      "XML CDATA sections detected; content was merged into surrounding text and the CDATA markers are not preserved by the generated struct",
+      { src: wholeDoc },
+    );
+  }
+
   let parsed: unknown;
   try {
     parsed = new XMLParser({

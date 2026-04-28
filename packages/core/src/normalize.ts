@@ -3,7 +3,7 @@ import type { Observation, ObservationMap } from "./observe";
 import type { FieldShape, Shape, UnionTaggingStyle, UnionVariant } from "./shape";
 import { escapeZigString, sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
 import { pickIntWidth, type ZigStringRepr, type ZigType } from "./zig/types";
-import type { ArrayStrategy, StringStrategy } from "./options";
+import type { ArrayStrategy, IntStrategy, StringStrategy, UnknownStrategy } from "./options";
 
 export type ZigField = {
   /** Identifier as it appears in Zig source (may be `@"…"`). */
@@ -112,13 +112,15 @@ export type NormalizeResult = {
   /** Top-level declarations in DFS order (root first when applicable). */
   decls: Decl[];
   needsStd: boolean;
+  /** Set when the result references `serde.Value` (only via `--unknown
+   *  serde-value`).  Generator emits `const serde = @import("serde");`
+   *  even on the plain target so the file compiles. */
+  needsSerde: boolean;
   /** XML root element name from the parser, plumbed through so the
    *  serde-zig decorator can emit `.xml_root = "<name>"` on the root struct.
    *  Undefined for non-XML inputs. */
   xmlRootElement?: string;
 };
-
-export type IntStrategy = "smallest" | "u64" | "i64";
 
 export type NormalizeOptions = {
   rootName: string;
@@ -126,6 +128,9 @@ export type NormalizeOptions = {
   stringStrategy?: StringStrategy;
   /** Array codegen strategy.  See `ArrayStrategy`.  Default `"slice"`. */
   arrayStrategy?: ArrayStrategy;
+  /** Unknown-shape strategy.  See `UnknownStrategy`.  Default
+   *  `"std-json-value"`. */
+  unknownStrategy?: UnknownStrategy;
   /** When true, non-optional scalar fields whose observations contain a single
    *  value get that value emitted as a Zig default (e.g. `port: u16 = 3000`).
    *  Requires `observations` to be supplied. */
@@ -147,9 +152,11 @@ type NormalizeState = {
   decls: Decl[];
   usedTypeNames: Set<string>;
   needsStd: boolean;
+  needsSerde: boolean;
   intStrategy: IntStrategy;
   stringRepr: ZigStringRepr;
   arrayStrategy: ArrayStrategy;
+  unknownStrategy: UnknownStrategy;
   defaultsFromSamples: boolean;
   observations?: ObservationMap;
   overrides: Overrides;
@@ -161,9 +168,11 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     decls: [],
     usedTypeNames: new Set(),
     needsStd: false,
+    needsSerde: false,
     intStrategy: options.intStrategy ?? "smallest",
     stringRepr: options.stringStrategy ?? "slice",
     arrayStrategy: options.arrayStrategy ?? "slice",
+    unknownStrategy: options.unknownStrategy ?? "std-json-value",
     defaultsFromSamples: options.defaultsFromSamples ?? false,
     observations: options.observations,
     overrides: options.overrides ?? {},
@@ -181,6 +190,7 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     rootType,
     decls: state.decls,
     needsStd: state.needsStd,
+    needsSerde: state.needsSerde,
     xmlRootElement: options.xmlRootElement,
   };
 }
@@ -196,9 +206,25 @@ function walkShape(shape: Shape, hint: string, state: NormalizeState, fromArrayE
     case "float":
       return { kind: "f64" };
     case "null":
-    case "unknown":
-      state.needsStd = true;
-      return { kind: "json" };
+    case "unknown": {
+      const reason = shape.kind === "unknown" ? shape.reason : "only-null";
+      switch (state.unknownStrategy) {
+        case "serde-value":
+          state.needsSerde = true;
+          return { kind: "serdeValue" };
+        case "string":
+          return { kind: "string", repr: state.stringRepr };
+        case "compile-error":
+          return {
+            kind: "compileError",
+            message: `zigshape: shape at this position was unknown (${reason}); replace this type`,
+          };
+        case "std-json-value":
+        default:
+          state.needsStd = true;
+          return { kind: "json" };
+      }
+    }
     case "array": {
       const elementHint = singularize(hint);
       const element = walkShape(shape.element, elementHint, state, /*fromArrayElement*/ true);

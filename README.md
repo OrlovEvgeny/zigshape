@@ -49,10 +49,15 @@ zigshape [files-or-urls...]
   [--format auto|json|ndjson|yaml|toml|xml]
                                       input format; default auto
   [--samples-from-array]              treat each top-level array item as a sample
-  [--int smallest|u64|i64]            integer width strategy; default smallest
+  [--int smallest|u64|i64|usize]      integer width strategy; default smallest
+                                      (usize uses isize for negative obs.)
   [--strings slice|mut|sentinel]      string wire form; default slice
   [--maps auto|struct|hash-map]       map detection override; default auto
   [--arrays slice|arraylist|fixed]    array codegen strategy; default slice
+  [--unknown CONV]                    fallback for shapes inference can't pin
+                                      down (only-null, mixed scalars). CONV
+                                      is std-json-value (default), serde-value,
+                                      string, or compile-error.
   [--enums auto|off|always]           enum suggestion; default auto
   [--unions off|internal|external|adjacent|untagged]
                                       tagged-union inference + serde tagging
@@ -80,7 +85,7 @@ zigshape [files-or-urls...]
   [--stdin]                           read sample from stdin
 ```
 
-Several files merge as samples of the same shape — fields appearing in only some samples become `?T = null`. Arguments matching `https?://…` are fetched at runtime, so `zigshape https://api.example.com/user --root User` works directly.
+Several files merge as samples of the same shape — fields appearing in only some samples become `?T = null`. Arguments matching `https?://…` are fetched at runtime, so `zigshape https://api.example.com/user --root User` works directly. Directory args are walked recursively and every file matching the active `--format` extension(s) is added as a sample (`zigshape ./samples/ --format json --root ApiResponse`).
 
 ## Schema reports + drift CI
 

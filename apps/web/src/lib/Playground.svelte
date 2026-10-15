@@ -14,6 +14,7 @@
   import {
     applyEdit,
     cliCommand,
+    resolveTargetOptions,
     presetOptions,
     type OptionEdits,
     type OptionKey,
@@ -45,7 +46,7 @@
     type Overrides,
     type SrcRef,
   } from "@zigshape/core";
-  import { serdeDecorator } from "@zigshape/serde-zig";
+  import { serdeCompatWarnings, serdeDecorator } from "@zigshape/serde-zig";
 
   type FormatArg = "auto" | Format;
 
@@ -162,11 +163,10 @@
         resolvedFormat: null as Format | null,
       };
     }
-    const { renameAll, denyUnknownFields, withDocComments, ...inferOptions } = options;
     const result = runPipeline({
       samples: nonEmpty,
       rootName: effectiveRoot,
-      inferOptions: { ...inferOptions, format },
+      inferOptions: { ...resolveTargetOptions(options, target), format },
       overrides,
     });
     const { normalized, resolvedFormat } = result;
@@ -182,9 +182,12 @@
         resolvedFormat,
       };
     }
-    const baseOpts =
-      target === "serde-zig" ? serdeDecorator(normalized, { renameAll, denyUnknownFields }) : {};
-    const opts = { ...baseOpts, withDocComments };
+    const serde = target === "serde-zig";
+    if (serde) warnings.push(...serdeCompatWarnings(normalized));
+    const baseOpts = serde
+      ? serdeDecorator(normalized, { renameAll: options.renameAll, denyUnknownFields: options.denyUnknownFields })
+      : {};
+    const opts = { ...baseOpts, withDocComments: options.withDocComments };
     const code = generateZig(normalized, opts);
     return { code, warnings, decls: normalized.decls, normalized, resolvedFormat };
   });

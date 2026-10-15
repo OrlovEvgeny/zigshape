@@ -1,6 +1,10 @@
+import type { Format } from "@zigshape/core";
+
 export type Example = {
   id: string;
   label: string;
+  /** Loading the example switches the input format to this. */
+  format: Format;
   rootName: string;
   target: "plain" | "serde-zig";
   samples: string[];
@@ -10,6 +14,7 @@ export const EXAMPLES: Example[] = [
   {
     id: "user-camel",
     label: "User (camelCase API)",
+    format: "json",
     rootName: "User",
     target: "serde-zig",
     samples: [
@@ -29,6 +34,7 @@ export const EXAMPLES: Example[] = [
   {
     id: "blog",
     label: "Nested + array of posts",
+    format: "json",
     rootName: "Blog",
     target: "serde-zig",
     samples: [
@@ -45,6 +51,7 @@ export const EXAMPLES: Example[] = [
   {
     id: "config-kebab",
     label: "Config (kebab-case)",
+    format: "json",
     rootName: "Cfg",
     target: "serde-zig",
     samples: [
@@ -62,6 +69,7 @@ export const EXAMPLES: Example[] = [
   {
     id: "ids-map",
     label: "Dynamic-key map",
+    format: "json",
     rootName: "Roster",
     target: "serde-zig",
     samples: [
@@ -76,6 +84,7 @@ export const EXAMPLES: Example[] = [
   {
     id: "github-user",
     label: "GitHub-like user payload",
+    format: "json",
     rootName: "User",
     target: "serde-zig",
     samples: [
@@ -103,6 +112,7 @@ export const EXAMPLES: Example[] = [
   {
     id: "stripe-invoice",
     label: "Stripe-like invoice",
+    format: "json",
     rootName: "Invoice",
     target: "serde-zig",
     samples: [
@@ -123,6 +133,7 @@ export const EXAMPLES: Example[] = [
   {
     id: "k8s-deployment",
     label: "Kubernetes deployment",
+    format: "yaml",
     rootName: "Deployment",
     target: "plain",
     samples: [
@@ -154,6 +165,7 @@ spec:
   {
     id: "cargo-toml",
     label: "Cargo-like manifest",
+    format: "toml",
     rootName: "Manifest",
     target: "plain",
     samples: [
@@ -175,6 +187,7 @@ json = []
   {
     id: "rss-feed",
     label: "RSS feed",
+    format: "xml",
     rootName: "Rss",
     target: "serde-zig",
     samples: [
@@ -195,6 +208,7 @@ json = []
   {
     id: "soap-envelope",
     label: "SOAP envelope",
+    format: "xml",
     rootName: "Envelope",
     target: "serde-zig",
     samples: [

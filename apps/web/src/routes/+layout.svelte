@@ -8,6 +8,7 @@
   import "@fontsource/ibm-plex-mono/latin-400.css";
   import "@fontsource/ibm-plex-mono/latin-500.css";
   import "../app.css";
+  import { onMount } from "svelte";
   import { page } from "$app/stores";
 
   let { children } = $props();
@@ -34,6 +35,27 @@
   const SERDE_URL = "https://github.com/OrlovEvgeny/serde.zig";
 
   const path = $derived($page.url.pathname);
+
+  // GitHub Buttons (buttons.github.io) swaps the anchor for an iframe, so
+  // the anchor is created here inside a node Svelte doesn't render into;
+  // creating it in markup would clash with hydration.  If the script is
+  // blocked, the plain serde.zig link next to it still works.
+  let starHost: HTMLSpanElement;
+  onMount(() => {
+    const a = document.createElement("a");
+    a.className = "github-button";
+    a.href = SERDE_URL;
+    a.textContent = "Star";
+    a.setAttribute("data-show-count", "true");
+    a.setAttribute("data-color-scheme", "no-preference: light; light: light; dark: dark;");
+    a.setAttribute("aria-label", "Star OrlovEvgeny/serde.zig on GitHub");
+    starHost.replaceChildren(a);
+    const script = document.createElement("script");
+    script.src = "https://buttons.github.io/buttons.js";
+    script.async = true;
+    document.head.appendChild(script);
+    return () => script.remove();
+  });
 </script>
 
 <svelte:head>
@@ -57,6 +79,7 @@
         serde.zig
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 1h6v6M9 1L1 9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
       </a>
+      <span class="stars" bind:this={starHost}></span>
     </div>
   </header>
 
@@ -148,6 +171,19 @@
   .spacer {
     flex: 1;
   }
+  .stars {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 20px;
+    margin-left: -18px;
+    line-height: 0;
+  }
+  /* The widget host is an inline span; as a block it centres on the bar
+     instead of sitting on the text baseline. */
+  .stars > :global(span) {
+    display: block;
+  }
 
   .site-footer {
     margin-top: 56px;
@@ -194,6 +230,9 @@
   @media (max-width: 640px) {
     .bar {
       gap: 14px;
+    }
+    .stars {
+      margin-left: -6px;
     }
     .formats {
       display: none;

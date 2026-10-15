@@ -107,3 +107,16 @@ export function withDefaults(opts?: Partial<ZigshapeOptions>): ZigshapeOptions {
   if (!opts) return { ...DEFAULT_OPTIONS };
   return { ...DEFAULT_OPTIONS, ...opts };
 }
+
+export type Target = "plain" | "serde-zig";
+
+/** Options whose right value depends on the codegen target.  std.json can't
+ *  read std.StringHashMap, has no rename and no alias, so the plain target
+ *  needs wire field names, std.json.ArrayHashMap and no alias merging;
+ *  serde.zig can't read std.json.Value, so the serde target falls back to
+ *  serde.Value.  Callers apply these under any choice the user made. */
+export function targetDefaults(target: Target): Pick<ZigshapeOptions, "unknown" | "mapType" | "fieldNames" | "aliases"> {
+  return target === "serde-zig"
+    ? { unknown: "serde-value", mapType: "string-hash-map", fieldNames: "snake_case", aliases: "auto" }
+    : { unknown: "std-json-value", mapType: "json-array-hash-map", fieldNames: "wire", aliases: "off" };
+}

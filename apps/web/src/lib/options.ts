@@ -3,7 +3,7 @@
 // away from the preset ("edits"), so switching presets stays predictable
 // and share links stay short.  Names and values mirror the CLI flags.
 
-import { DEFAULT_OPTIONS, type Format, type ZigshapeOptions } from "@zigshape/core";
+import { DEFAULT_OPTIONS, targetDefaults, type Format, type ZigshapeOptions } from "@zigshape/core";
 import type { RenameAllStrategy } from "@zigshape/serde-zig";
 import { PRESETS, type PresetId } from "./presets";
 
@@ -261,7 +261,7 @@ export function cliCommand(
  *  neither rename nor alias, and serde.zig can't read std.json.Value, so
  *  these follow the target unless the user picked something. */
 export function resolveTargetOptions(opts: WebOptions, target: "plain" | "serde-zig") {
-  const serde = target === "serde-zig";
+  const byTarget = targetDefaults(target);
   return {
     intStrategy: opts.intStrategy,
     strings: opts.strings,
@@ -271,9 +271,10 @@ export function resolveTargetOptions(opts: WebOptions, target: "plain" | "serde-
     unions: opts.unions,
     defaultsFromSamples: opts.defaultsFromSamples,
     treatRootArrayAsSamples: opts.treatRootArrayAsSamples,
-    unknown: opts.unknown === "auto" ? (serde ? "serde-value" : "std-json-value") : opts.unknown,
-    fieldNames: opts.fieldNames === "auto" ? (serde ? "snake_case" : "wire") : opts.fieldNames,
-    aliases: serde ? opts.aliases : "off",
-    mapType: serde ? "string-hash-map" : "json-array-hash-map",
+    unknown: opts.unknown === "auto" ? byTarget.unknown : opts.unknown,
+    fieldNames: opts.fieldNames === "auto" ? byTarget.fieldNames : opts.fieldNames,
+    // Aliases are a serde.zig feature; the plain target never merges keys.
+    aliases: target === "serde-zig" ? opts.aliases : byTarget.aliases,
+    mapType: byTarget.mapType,
   } satisfies Partial<ZigshapeOptions>;
 }

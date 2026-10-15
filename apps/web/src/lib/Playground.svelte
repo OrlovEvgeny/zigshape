@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { replaceState } from "$app/navigation";
   import Editor, { type EditorLanguage, type HighlightRange } from "$lib/Editor.svelte";
   import Inspector from "$lib/Inspector.svelte";
   import SampleSource from "$lib/SampleSource.svelte";
@@ -321,7 +322,7 @@
   async function shareConfig() {
     const hash = encodeShareConfig({ rootName, target, format, presetId });
     const url = window.location.origin + window.location.pathname + hash;
-    history.replaceState(null, "", hash);
+    replaceState(hash, {});
     const ok = await copyWithFallback(url);
     showShareNotice(ok ? "Config link copied to clipboard." : "Config link in URL bar.");
   }
@@ -330,7 +331,7 @@
     try {
       const hash = encodeShareWithSamples({ rootName, target, format, presetId, samples });
       const url = window.location.origin + window.location.pathname + hash;
-      history.replaceState(null, "", hash);
+      replaceState(hash, {});
       const ok = await copyWithFallback(url);
       showShareNotice(ok ? "Link with samples copied to clipboard." : "Link with samples in URL bar.");
     } catch (e) {

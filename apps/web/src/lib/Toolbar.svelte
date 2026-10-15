@@ -125,7 +125,7 @@
       {#each EXAMPLES as ex (ex.id)}
         <button type="button" class="menu-item" role="menuitem" onclick={() => onLoadExample(ex)}>
           <span>{ex.label}</span>
-          <small>{ex.samples.length} sample{ex.samples.length === 1 ? "" : "s"} · {ex.target === "serde-zig" ? "serde.zig" : "plain"}</small>
+          <small>{FORMAT_LABEL[ex.format]} · {ex.samples.length} sample{ex.samples.length === 1 ? "" : "s"} · {ex.target === "serde-zig" ? "serde.zig" : "plain"}</small>
         </button>
       {/each}
     </Menu>

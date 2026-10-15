@@ -269,6 +269,9 @@
   }
 
   function loadExample(e: Example) {
+    // A pinned format (SEO pages, or picked by hand) would otherwise parse
+    // the example with the wrong parser.  Auto mode detects it on its own.
+    if (format !== "auto") format = e.format;
     samples = [...e.samples];
     activeIndex = 0;
     rootName = e.rootName;

@@ -7,6 +7,7 @@ import type { Example } from "./examples";
 export const JSON_DEFAULT: Example = {
   id: "seo-json",
   label: "JSON sample",
+  format: "json",
   rootName: "User",
   target: "plain",
   samples: [
@@ -22,6 +23,7 @@ export const JSON_DEFAULT: Example = {
 export const YAML_DEFAULT: Example = {
   id: "seo-yaml",
   label: "YAML sample",
+  format: "yaml",
   rootName: "Config",
   target: "plain",
   samples: [
@@ -40,6 +42,7 @@ ports:
 export const TOML_DEFAULT: Example = {
   id: "seo-toml",
   label: "TOML sample",
+  format: "toml",
   rootName: "Config",
   target: "plain",
   samples: [
@@ -57,6 +60,7 @@ name = "main"
 export const XML_DEFAULT: Example = {
   id: "seo-xml",
   label: "XML sample",
+  format: "xml",
   rootName: "User",
   target: "serde-zig",
   samples: [

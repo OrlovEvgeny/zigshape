@@ -100,3 +100,19 @@ export function unionShapeOf(root: Shape): Shape | null {
   if (root.kind !== "array") return null;
   return root.element;
 }
+
+describe("union tagging style vs samples", () => {
+  const samples = ['[{"type": "a", "x": 1}, {"type": "b", "y": "s"}]'];
+  const codes = (unions: "internal" | "external" | "adjacent" | "untagged") =>
+    runPipeline({ samples, rootName: "Events", inferOptions: { unions } }).warnings.map((w) => w.code);
+
+  test("external and adjacent are flagged for internally tagged samples", () => {
+    expect(codes("external")).toContain("infer.union_style_mismatch");
+    expect(codes("adjacent")).toContain("infer.union_style_mismatch");
+  });
+
+  test("internal and untagged match the samples", () => {
+    expect(codes("internal")).not.toContain("infer.union_style_mismatch");
+    expect(codes("untagged")).not.toContain("infer.union_style_mismatch");
+  });
+});

@@ -2,6 +2,12 @@ import { ZIG_KEYWORDS } from "./keywords";
 
 const PLAIN_IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** Keywords, builtin type names, and arbitrary-width integer types
+ *  (`u7`, `i128`), none of which can be a bare identifier. */
+function isReserved(name: string): boolean {
+  return ZIG_KEYWORDS.has(name) || /^[iu]\d+$/.test(name);
+}
+
 export type SanitizedIdentifier = {
   /** The text to write in Zig source (may include `@"…"` escaping). */
   text: string;
@@ -30,14 +36,34 @@ export function toPascalCase(input: string): string {
     .join("");
 }
 
+/** `prefix:local` — an XML qualified name (or a JSON-LD style compact IRI). */
+const QUALIFIED_NAME_RE = /^[A-Za-z_][\w.-]*:([A-Za-z_][\w.-]*)$/;
+
+/** The part of a key a Zig identifier is built from: the local name of a
+ *  qualified `prefix:local` key, the key itself otherwise.  The full key
+ *  stays the wire name (serde `.rename`). */
+export function identifierSource(key: string): string {
+  return QUALIFIED_NAME_RE.exec(key)?.[1] ?? key;
+}
+
 /** Sanitize a JSON object key into a valid Zig field identifier. */
 export function sanitizeFieldName(key: string): SanitizedIdentifier {
-  const snake = toSnakeCase(key);
+  const snake = toSnakeCase(identifierSource(key));
   if (snake && PLAIN_IDENT_RE.test(snake)) {
-    if (ZIG_KEYWORDS.has(snake)) {
+    if (isReserved(snake)) {
       return { text: snake + "_", escaped: false, changed: true };
     }
     return { text: snake, escaped: false, changed: snake !== key };
+  }
+  return { text: `@"${escapeZigString(key)}"`, escaped: true, changed: true };
+}
+
+/** The key itself as a Zig identifier, `@"…"`-escaped when it isn't a
+ *  plain identifier or collides with a keyword / primitive.  Used where the
+ *  field name must equal the wire key (std.json has no rename). */
+export function wireFieldName(key: string): SanitizedIdentifier {
+  if (PLAIN_IDENT_RE.test(key) && !isReserved(key)) {
+    return { text: key, escaped: false, changed: false };
   }
   return { text: `@"${escapeZigString(key)}"`, escaped: true, changed: true };
 }

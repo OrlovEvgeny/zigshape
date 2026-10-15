@@ -6,6 +6,6 @@ pub const Cfg = struct {
     log_level: []const u8,
 
     pub const serde = .{
-        .rename_all = serde.NamingConvention.kebab_case,
+        .rename_all = .kebab_case,
     };
 };

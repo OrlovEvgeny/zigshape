@@ -19,6 +19,11 @@ export type GenerateOptions = {
   decorateEnum?: (decl: EnumDecl) => string[] | null | undefined;
   /** Decorator hook for union(enum) declarations. */
   decorateUnion?: (decl: UnionDecl) => string[] | null | undefined;
+  /** Default for a field that has none of its own (the generator only
+   *  consults it when `field.defaultExpr` is undefined).  The serde target
+   *  uses it for skipped fields, which serde.zig can only build with a
+   *  default. */
+  fieldDefault?: (decl: StructDecl, field: ZigField) => string | undefined;
   /** Extra import lines (e.g. `const serde = @import("serde");`). */
   extraImports?: string[];
   /** When true, emit a `/// {comment}` line above each struct field that
@@ -32,11 +37,8 @@ export function generateZig(result: NormalizeResult, options: GenerateOptions = 
   const lines: string[] = [];
   const imports: string[] = [];
   if (result.needsStd) imports.push('const std = @import("std");');
-  // Dedup serde import: needsSerde fires from --unknown serde-value, while
-  // the serde decorator may also have requested it via extraImports.
-  const serdeImport = 'const serde = @import("serde");';
-  const serdeAlreadyInExtra = (options.extraImports ?? []).includes(serdeImport);
-  if (result.needsSerde && !serdeAlreadyInExtra) imports.push(serdeImport);
+  // `serde.Value` renders with an inline @import, so needsSerde alone
+  // doesn't require a file-level import.
   for (const im of options.extraImports ?? []) imports.push(im);
   if (imports.length > 0) {
     lines.push(...imports);
@@ -96,7 +98,8 @@ function appendStruct(lines: string[], decl: StructDecl, options: GenerateOption
     if (options.withDocComments && f.docComment) {
       lines.push(INDENT + "/// " + f.docComment);
     }
-    lines.push(INDENT + renderField(f));
+    const fallback = f.defaultExpr === undefined ? options.fieldDefault?.(decl, f) : undefined;
+    lines.push(INDENT + renderField(fallback === undefined ? f : { ...f, defaultExpr: fallback }));
   }
   if (decoration.length > 0) {
     if (decl.fields.length > 0) lines.push("");

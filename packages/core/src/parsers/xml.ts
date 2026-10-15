@@ -26,11 +26,13 @@ export function parseXml(input: string, sampleIndex: number): ParseResult {
   }
 
   if (NS_DETECT_RE.test(input)) {
-    diagnostics.warn(
-      "parse.xml_namespace",
-      "XML namespace prefixes detected and stripped; original prefix is not preserved in the generated struct",
-      { src: wholeDoc },
-    );
+    diagnostics.push({
+      severity: "info",
+      code: "parse.xml_namespace",
+      message:
+        "XML namespace prefixes are kept as wire names (serde.zig matches soap:Body literally); fields use the local name with a rename, and xmlns declarations are ignored",
+      src: wholeDoc,
+    });
   }
 
   // fast-xml-parser merges CDATA sections into the surrounding text node
@@ -53,9 +55,13 @@ export function parseXml(input: string, sampleIndex: number): ParseResult {
       ignoreAttributes: false,
       attributeNamePrefix: ATTR_PREFIX,
       textNodeName: TEXT_KEY,
-      removeNSPrefix: true,
-      parseTagValue: true,
-      parseAttributeValue: true,
+      // Keep `prefix:name`: serde.zig compares element names literally.
+      removeNSPrefix: false,
+      // Values stay text and go through xmlScalar(), which only reads a
+      // number when the text round-trips (fast-xml-parser turns "2.0" into
+      // the integer 2, which serde.zig then fails to parse as an int).
+      parseTagValue: false,
+      parseAttributeValue: false,
       trimValues: true,
       allowBooleanAttributes: true,
     }).parse(input);
@@ -94,7 +100,7 @@ function jsToZ(value: unknown, src: SrcRef, diag: DiagnosticBag): ZValue | null 
   if (value === null || value === undefined) return { kind: "null", src };
 
   if (typeof value === "boolean") return { kind: "bool", value, src };
-  if (typeof value === "string") return { kind: "string", value, src };
+  if (typeof value === "string") return xmlScalar(value, src);
 
   if (typeof value === "bigint") return { kind: "int", value, src };
 
@@ -136,6 +142,8 @@ function jsToZ(value: unknown, src: SrcRef, diag: DiagnosticBag): ZValue | null 
         fields.set("value", { key: "value", keySrc: src, value: v, xml: { kind: "text" } });
       } else if (key.startsWith(ATTR_PREFIX)) {
         const stripped = key.slice(ATTR_PREFIX.length);
+        // Namespace declarations aren't data.
+        if (stripped === "xmlns" || stripped.startsWith("xmlns:")) continue;
         fields.set(stripped, {
           key: stripped,
           keySrc: src,
@@ -155,4 +163,18 @@ function jsToZ(value: unknown, src: SrcRef, diag: DiagnosticBag): ZValue | null 
     { src },
   );
   return null;
+}
+
+/** Typed scalar for XML text, read the way serde.zig will read it back:
+ *  an integer only for a plain decimal integer without leading zeros
+ *  ("02134" stays a string), a float only for a decimal with a fraction or
+ *  exponent, a bool for true/false, otherwise the text itself. */
+function xmlScalar(text: string, src: SrcRef): ZValue {
+  if (/^-?(0|[1-9]\d*)$/.test(text)) return { kind: "int", value: BigInt(text), src };
+  if (/^-?(0|[1-9]\d*)(\.\d+([eE][+-]?\d+)?|[eE][+-]?\d+)$/.test(text)) {
+    return { kind: "float", value: Number(text), src };
+  }
+  if (text === "true") return { kind: "bool", value: true, src };
+  if (text === "false") return { kind: "bool", value: false, src };
+  return { kind: "string", value: text, src };
 }

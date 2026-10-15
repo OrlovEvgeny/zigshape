@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateZig, runPipeline, type ZigshapeOptions } from "@zigshape/core";
@@ -64,8 +64,10 @@ describe("serde-zig golden fixtures", () => {
     if (!cfg) throw new Error(`No fixture config for ${base}`);
     test(base, () => {
       const samples = loadSamples(base);
-      const expected = readFileSync(join(goldenDir, base + ".serde.zig"), "utf8");
       const actual = generateSerdeZig(samples, cfg);
+      // UPDATE_GOLDEN=1 bun test rewrites the fixtures; review the diff.
+      if (process.env.UPDATE_GOLDEN) writeFileSync(join(goldenDir, base + ".serde.zig"), actual);
+      const expected = readFileSync(join(goldenDir, base + ".serde.zig"), "utf8");
       expect(actual).toBe(expected);
     });
   }

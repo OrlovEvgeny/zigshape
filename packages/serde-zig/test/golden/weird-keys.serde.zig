@@ -7,7 +7,6 @@ pub const Thing = struct {
     pub const serde = .{
         .rename = .{
             .first_name = "first-name",
-            .@"2fa_enabled" = "2fa_enabled",
         },
     };
 };

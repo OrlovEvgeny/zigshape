@@ -7,7 +7,7 @@ pub const Command = union(enum) {
     execute: Execute,
 
     pub const serde = .{
-        .tag = serde.UnionTag.internal,
+        .tag = .internal,
         .tag_field = "type",
     };
 };

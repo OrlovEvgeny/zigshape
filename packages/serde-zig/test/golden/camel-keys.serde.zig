@@ -6,6 +6,6 @@ pub const User = struct {
     last_seen: []const u8,
 
     pub const serde = .{
-        .rename_all = serde.NamingConvention.camel_case,
+        .rename_all = .camel_case,
     };
 };

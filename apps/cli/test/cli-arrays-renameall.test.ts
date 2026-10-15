@@ -58,7 +58,7 @@ describe("--rename-all", () => {
       '{"userId": 1, "firstName": "A"}',
     );
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("rename_all = serde.NamingConvention.camel_case");
+    expect(r.stdout).toContain("rename_all = .camel_case");
   });
 
   test("forces snake_case even with no renames", async () => {
@@ -67,7 +67,7 @@ describe("--rename-all", () => {
       '{"port": 80, "host": "x"}',
     );
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("rename_all = serde.NamingConvention.snake_case");
+    expect(r.stdout).toContain("rename_all = .snake_case");
   });
 
   test("forces camel_case + emits explicit .rename for non-conforming wire", async () => {
@@ -78,7 +78,7 @@ describe("--rename-all", () => {
       '{"user_name": "A", "userId": 1}',
     );
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("rename_all = serde.NamingConvention.camel_case");
+    expect(r.stdout).toContain("rename_all = .camel_case");
     expect(r.stdout).toContain('.user_name = "user_name"');
   });
 
@@ -99,7 +99,7 @@ describe("--rename-all", () => {
       '{"MAX_RETRIES": 5, "TIMEOUT": 30}',
     );
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("rename_all = serde.NamingConvention.screaming_snake");
+    expect(r.stdout).toContain("rename_all = .SCREAMING_SNAKE_CASE");
   });
 
   test("invalid value rejected", async () => {

@@ -51,8 +51,10 @@ export {
 export {
   renderZigType,
   suggestAlternatives,
+  SERDE_VALUE,
   type ZigType,
   type ZigIntWidth,
+  type ZigMapRepr,
   pickIntWidth,
 } from "./zig/types";
 export { escapeZigString, sanitizeFieldName, sanitizeStructName, toSnakeCase, toPascalCase, singularize } from "./zig/identifier";
@@ -62,6 +64,7 @@ export {
   emitParserHelper,
   emitTestScaffold,
   emitBuildSnippet,
+  SERDE_ZIG_VERSION,
   type SnippetTarget,
 } from "./zig/snippets";
 export { runPipeline, type PipelineInput, type PipelineResult } from "./pipeline";
@@ -73,6 +76,8 @@ export {
   type AliasStrategy,
   type StringStrategy,
   type MapStrategy,
+  type MapType,
+  type FieldNames,
   type ArrayStrategy,
   type UnknownStrategy,
   DEFAULT_OPTIONS,

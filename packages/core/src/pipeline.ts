@@ -122,6 +122,8 @@ export function runPipeline({ samples, rootName, inferOptions, overrides }: Pipe
     intStrategy: options.intStrategy,
     stringStrategy: options.strings,
     arrayStrategy: options.arrays,
+    mapType: options.mapType,
+    fieldNames: options.fieldNames,
     unknownStrategy: options.unknown,
     defaultsFromSamples: options.defaultsFromSamples,
     observations,

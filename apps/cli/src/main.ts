@@ -11,6 +11,7 @@ import {
   generateZig,
   runPipeline,
   SUPPORTED_FORMATS,
+  targetDefaults,
   type AliasStrategy,
   type ArrayStrategy,
   type EnumStrategy,
@@ -583,24 +584,20 @@ export async function run(
     }
   }
 
-  const serde = args.target === "serde-zig";
+  const byTarget = targetDefaults(args.target);
   const inferOptions: Partial<ZigshapeOptions> = {
     format: args.format,
     intStrategy: args.intStrategy,
     strings: args.stringStrategy,
     maps: args.mapStrategy,
     arrays: args.arrayStrategy,
-    // Defaults that follow the target.  serde.zig can't read std.json.Value;
-    // std.json can't read std.StringHashMap and has neither rename nor
-    // alias, so its field names must be the wire keys.
-    unknown: args.explicit.has("unknownStrategy")
-      ? args.unknownStrategy
-      : serde ? "serde-value" : "std-json-value",
-    mapType: serde ? "string-hash-map" : "json-array-hash-map",
-    fieldNames: args.explicit.has("fieldNames") ? args.fieldNames : serde ? "snake_case" : "wire",
+    // Target-dependent defaults, unless set on the command line or config.
+    unknown: args.explicit.has("unknownStrategy") ? args.unknownStrategy : byTarget.unknown,
+    mapType: byTarget.mapType,
+    fieldNames: args.explicit.has("fieldNames") ? args.fieldNames : byTarget.fieldNames,
     enums: args.enums,
     unions: args.unions,
-    aliases: args.explicit.has("aliases") ? args.aliases : serde ? args.aliases : "off",
+    aliases: args.explicit.has("aliases") ? args.aliases : byTarget.aliases,
     treatRootArrayAsSamples: args.samplesFromArray,
     defaultsFromSamples: args.defaultsFromSamples,
   };

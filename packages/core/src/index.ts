@@ -83,6 +83,8 @@ export {
   type UnknownStrategy,
   DEFAULT_OPTIONS,
   withDefaults,
+  targetDefaults,
+  type Target,
 } from "./options";
 export { buildReport, type SchemaReport, type ReportField, type ReportDecl } from "./report";
 export {

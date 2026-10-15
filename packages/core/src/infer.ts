@@ -9,7 +9,7 @@ import {
   type UnionTaggingStyle,
   type UnionVariant,
 } from "./shape";
-import { sanitizeFieldName, sanitizeStructName } from "./zig/identifier";
+import { sanitizeFieldName, sanitizeStructName, wireFieldName } from "./zig/identifier";
 import type { ZObject, ZValue } from "./value";
 
 const TAG_FIELD_PREFERENCES = ["type", "kind", "_type", "_tag", "__typename"];
@@ -160,6 +160,19 @@ function inferString(
   opts: ZigshapeOptions,
   diag: DiagnosticBag,
 ): Shape {
+  // Enum literals already name variants, so they become an enum whatever the
+  // thresholds say.  Variant identifiers are the literals verbatim: serde.zig
+  // and std.zon match `.name` against the Zig field name, not a rename.
+  const literals = o.enumLiteralCount ?? 0;
+  if (literals > 0 && literals === (o.countByKind.get("string") ?? 0) && o.stringSamples) {
+    const variants: EnumVariant[] = [];
+    for (const [rawValue, count] of o.stringSamples) {
+      const ident = wireFieldName(rawValue);
+      variants.push({ zigName: ident.text, escaped: ident.escaped, rawValue, observedCount: count });
+    }
+    return { kind: "enum", path, variants, literal: true };
+  }
+
   // String-shape hint: emit a warning when every observed value at this path
   // matches the same recognisable shape (ISO-8601 datetime / UUID / URL /
   // email).  Type stays `[]const u8` — we surface the hint without silently

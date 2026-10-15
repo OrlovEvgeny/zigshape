@@ -351,7 +351,7 @@ function walkEnum(
     name,
     path: shape.path,
     variants: shape.variants.map((v) => {
-      const base = state.fieldNames === "wire" ? wireFieldName(v.rawValue) : null;
+      const base = state.fieldNames === "wire" || shape.literal ? wireFieldName(v.rawValue) : null;
       const baseName = base?.text ?? v.zigName;
       let zigName = baseName;
       let i = 2;

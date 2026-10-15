@@ -4,6 +4,7 @@ import { normalize, type NormalizeResult, type Overrides } from "./normalize";
 import { observeSamples } from "./observe";
 import { withDefaults, type ZigshapeOptions } from "./options";
 import { detectFormat, parseSample } from "./parse";
+import { isRecordFormat, type Format } from "./parsers/types";
 import type { ZValue } from "./value";
 
 export type PipelineInput = {
@@ -33,7 +34,8 @@ export function runPipeline({ samples, rootName, inferOptions, overrides }: Pipe
   const detectedFormats = new Set<string>();
   const xmlRoots: string[] = [];
 
-  // NDJSON forces the array-of-samples treatment regardless of the option.
+  // NDJSON and CSV force the array-of-samples treatment regardless of the
+  // option: every line / row is a record.
   // We track the resolved per-sample format so we can flip the flag for
   // those entries even when the global option is left at its default.
   const ndjsonSamples: number[] = [];
@@ -50,7 +52,7 @@ export function runPipeline({ samples, rootName, inferOptions, overrides }: Pipe
     for (const d of r.diagnostics.toArray()) all.push(d);
     if (r.value && !r.diagnostics.hasErrors()) {
       values.push(r.value);
-      if (resolvedFormat === "ndjson") ndjsonSamples.push(values.length - 1);
+      if (isRecordFormat(resolvedFormat as Format)) ndjsonSamples.push(values.length - 1);
     }
     if (r.xmlRoot !== undefined) xmlRoots.push(r.xmlRoot);
   }

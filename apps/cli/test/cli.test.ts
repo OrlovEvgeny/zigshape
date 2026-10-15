@@ -245,3 +245,25 @@ describe("cli", () => {
     expect(r.stderr).toContain("xml_namespace");
   });
 });
+
+describe("cli new serde.zig formats", () => {
+  test("csv rows parse into a slice of the row struct", async () => {
+    const r = await runCli(["--stdin", "--root", "Row", "--target", "serde-zig", "--with-parser"], "id,name\n1,Ann\n2,\n");
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("name: ?[]const u8 = null");
+    expect(r.stdout).toContain("serde.csv.fromSliceManaged([]const Row, allocator, input)");
+  });
+
+  test("zon enum literals become an enum", async () => {
+    const r = await runCli(["--stdin", "--root", "M"], ".{ .name = .app, .paths = .{ \"a\" } }");
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("name: Name,");
+    expect(r.stdout).toContain("pub const Name = enum {");
+  });
+
+  test("toon is detected from its array header", async () => {
+    const r = await runCli(["--stdin", "--root", "Doc"], "tags[2]: a,b\n");
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("tags: []const []const u8");
+  });
+});

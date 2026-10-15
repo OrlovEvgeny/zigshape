@@ -9,6 +9,12 @@ export type ParseResult = {
   xmlRoot?: string;
 };
 
-export type Format = "json" | "ndjson" | "yaml" | "toml" | "xml";
+export type Format = "json" | "ndjson" | "yaml" | "toml" | "xml" | "csv" | "zon" | "toon";
 
-export const SUPPORTED_FORMATS: readonly Format[] = ["json", "ndjson", "yaml", "toml", "xml"];
+export const SUPPORTED_FORMATS: readonly Format[] = ["json", "ndjson", "yaml", "toml", "xml", "csv", "zon", "toon"];
+
+/** Formats whose document is a list of records, each observed as its own
+ *  sample: NDJSON lines and CSV rows. */
+export function isRecordFormat(format: Format): boolean {
+  return format === "ndjson" || format === "csv";
+}

@@ -22,6 +22,8 @@ export type Observation = {
   // to skip enum suggestion regardless of distinctness ratio.
   stringSamples?: Map<string, number>;
   stringSamplesOverflowed?: boolean;
+  /** How many string observations were enum literals (ZON `.name`). */
+  enumLiteralCount?: number;
   stringFirstSrcByValue?: Map<string, SrcRef>;
   // bool kind specifics — used by defaults-from-samples to recognise singleton
   // observations (all true / all false).
@@ -96,6 +98,7 @@ function observe(value: ZValue, path: string, map: ObservationMap): void {
       else o.boolFalse = (o.boolFalse ?? 0) + 1;
       break;
     case "string": {
+      if (value.enumLiteral) o.enumLiteralCount = (o.enumLiteralCount ?? 0) + 1;
       o.stringSamples ??= new Map();
       o.stringFirstSrcByValue ??= new Map();
       const existing = o.stringSamples.get(value.value);

@@ -1,8 +1,8 @@
 # zigshape
 
-Zig schema/struct generator for real-world data formats. Generates idiomatic Zig structs from JSON, YAML, TOML and XML, with first-class `serde.zig` support. Web playground + CLI + VS Code extension.
+Zig schema/struct generator for real-world data formats. Generates Zig structs from JSON, NDJSON, YAML, TOML, XML, CSV, ZON and TOON that `std.json` (plain target) or [serde.zig](https://github.com/OrlovEvgeny/serde.zig) 1.2.3 (serde-zig target) parse as-is. Web playground + CLI + VS Code extension.
 
-> **Status: v1.0 — alias detection, schema-drift CI, editable per-field overrides, share links, VS Code extension, per-format SEO pages.**
+> **Status: serde.zig 1.2.3 compatible output, CSV / ZON / TOON inputs, std.json-parseable plain target.**
 
 ## Layout
 
@@ -16,16 +16,34 @@ packages/
   serde-zig/    serde.zig output adapter
 ```
 
-## Supported formats (v0.3)
+## Supported formats
 
-| Format | Status | Notes |
-|--------|--------|-------|
-| JSON   | full   | JSONC tolerated. Source ranges plumbed through to the field inspector. |
-| YAML   | full   | Anchors, aliases and `<<` merge keys resolved. Multi-document warns + uses first. |
-| TOML   | full   | Tables, arrays of tables, inline tables. Source ranges are whole-document only (smol-toml limitation). |
-| XML    | full   | Attributes vs child elements distinguished; `xml_root` / `xml_attribute` emitted on the serde-zig target. Namespace prefixes stripped (warns). Mixed content (attributes + text) emits a `value` field with a TODO comment, since serde.zig doesn't document `xml_text`. Whole-document source ranges only. |
+| Format | Notes |
+|--------|-------|
+| JSON   | JSONC tolerated. Source ranges plumbed through to the field inspector. |
+| NDJSON | Every line is a sample. The parse helper reads one line; serde.zig's `StreamingDeserializer` handles streams. |
+| YAML   | Anchors, aliases and `<<` merge keys resolved. YAML 1.2 scalars (`yes`/`no` stay strings, as in serde.zig). Multi-document warns + uses first. |
+| TOML   | Tables, arrays of tables, inline tables. Source ranges are whole-document only (smol-toml limitation). |
+| XML    | Attributes vs child elements distinguished; `xml_root` / `xml_attribute` on the serde-zig target. Namespace prefixes are kept as wire names (`soap:Body` → field `body` + `.rename`); `xmlns` declarations are ignored. Text becomes a number only when it round-trips (`2.0` → f64, `02134` stays a string). Text in an element that also has attributes becomes an optional `value` field, because serde.zig skips it. |
+| CSV    | Header row names the fields; every row is a sample, so a column empty in some rows becomes optional. Typed the way serde.zig reads cells (quoted → string). The document parses as `[]const Row`. |
+| ZON    | `.{ .a = 1 }` → struct, `.{ 1, 2 }` → slice, enum literals → an enum with the literal spellings. Hex/octal/binary ints, chars and `\\` multiline strings understood. Plain output reads with `std.zon.parse`. |
+| TOON   | Decoded with the reference implementation (`@toon-format/toon`); tabular arrays become slices of structs. Whole-document source ranges only. |
 
-Auto-detection works for all four; pass `--format` to override.
+Auto-detection covers every format; pass `--format` to override.
+
+### Targets
+
+- **plain** — `std.json`-compatible: field names are the wire keys (`@"first-name"` when needed), maps are `std.json.ArrayHashMap(V)`, no alias merging, fallback `std.json.Value`. `--field-names snake_case` restores converted names if you map them yourself.
+- **serde-zig** — snake_case fields with a `pub const serde = .{ ... }` block (`rename_all`, `rename`, `alias`, `flatten`, `skip`, `tag`, `xml_root`, ...), written with enum literals (`.rename_all = .camel_case`) because a reference to the `serde` module inside a struct that declares `pub const serde` doesn't compile. Maps are `std.StringHashMap(V)`, fallback `?serde.Value`.
+
+### serde.zig 1.2.3 limitations zigshape warns about
+
+- `std.json.Value` fields can't be deserialized (`serde.unsupported_json_value`).
+- `[]u8` / `[:0]const u8` fields don't compile: every string is read as `[]const u8` (`serde.unsupported_string`).
+- `serde.Value` is built from typed values, not parsed from input: such a field accepts only `null` (`serde.value_null_only` / `serde.value_unparseable`).
+- The ZON reader rejects comments, non-decimal integers and multiline strings (`parse.zon_serde_compat`).
+- XML text next to attributes or children is skipped (optional `value` field, see above).
+- `std.ArrayList` has no built-in mapping in serde.zig or std.json (`normalize.arraylist_unparseable`).
 
 ## Develop
 
@@ -46,7 +64,7 @@ bun apps/cli/src/main.ts <file> --root User --target serde-zig
 
 ```
 zigshape [files-or-urls...]
-  [--format auto|json|ndjson|yaml|toml|xml]
+  [--format auto|json|ndjson|yaml|toml|xml|csv|zon|toon]
                                       input format; default auto
   [--samples-from-array]              treat each top-level array item as a sample
   [--int smallest|u64|i64|usize]      integer width strategy; default smallest
@@ -56,13 +74,19 @@ zigshape [files-or-urls...]
   [--arrays slice|arraylist|fixed]    array codegen strategy; default slice
   [--unknown CONV]                    fallback for shapes inference can't pin
                                       down (only-null, mixed scalars). CONV
-                                      is std-json-value (default), serde-value,
+                                      is std-json-value (plain default),
+                                      serde-value (serde-zig default),
                                       string, or compile-error.
+  [--field-names snake_case|wire]     field identifiers; default wire for
+                                      plain (std.json matches keys
+                                      literally), snake_case for serde-zig
   [--enums auto|off|always]           enum suggestion; default auto
   [--unions off|internal|external|adjacent|untagged]
                                       tagged-union inference + serde tagging
                                       style; default off
-  [--aliases auto|off]                cross-sample alias detection; default auto
+  [--aliases auto|off]                cross-sample alias detection (serde.zig
+                                      alias); default auto for serde-zig,
+                                      off for plain
   [--rename-all CONV]                 force serde naming convention (auto,
                                       none, snake_case, camel_case,
                                       pascal_case, kebab_case,
@@ -78,7 +102,7 @@ zigshape [files-or-urls...]
   [--config PATH]                     load defaults + per-field overrides
   [--with-parser]                     append a parse<Root>(allocator, input)
                                       helper that wraps std.json or
-                                      serde.<format>.fromSlice
+                                      serde.<format>.fromSliceManaged
   [--with-tests]                      append a test "parse <Root>" scaffold
   [--with-build-snippet]              prepend a build.zig comment block with
                                       dependency wiring
@@ -126,7 +150,7 @@ The output panel's **More** menu exposes four output variants that match the CLI
 
 **Curl paste**: the active editor recognises a pasted `curl …` command (with or without a leading `$ ` prompt). It extracts the `-d` / `--data` / `--data-raw` payload as the new sample and seeds the root struct name from the URL path's last identifier-like segment (`/v1/users/42` → `User`). Numeric and UUID-shaped path segments are skipped automatically.
 
-Per-format landing pages: `/json-to-zig-struct`, `/yaml-to-zig-struct`, `/toml-to-zig-struct`, `/xml-to-zig-struct`, plus their `…-to-serde-zig` variants. Each pins format + target + preset and ships SEO meta + JSON-LD.
+Per-format landing pages (`/json-to-zig-struct`, `/csv-to-zig-struct`, `/zon-to-zig-struct`, ... ) are generated from `apps/web/src/lib/pages.ts`, which also drives the sitemap, the footer and each page's FAQ / breadcrumb structured data.
 
 ## VS Code extension
 

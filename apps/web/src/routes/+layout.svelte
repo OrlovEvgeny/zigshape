@@ -44,10 +44,7 @@
   <header class="site-header">
     <div class="page bar">
       <a class="brand" href="/" aria-label="zigshape home">
-        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-          <rect x="0.75" y="0.75" width="16.5" height="16.5" rx="4" fill="none" stroke="currentColor" stroke-width="1.5" />
-          <path d="M5.5 6h7l-7 6h7" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
+        <img src="/zig-mark.svg" width="22" height="20" alt="" />
         <span>zigshape</span>
       </a>
       <nav class="formats" aria-label="Formats">

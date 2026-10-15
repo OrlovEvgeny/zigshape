@@ -14,10 +14,10 @@
   <link rel="canonical" href="https://zigshape.dev/toml-to-serde-zig" />
 </svelte:head>
 
-<main>
-  <header>
+<main class="page">
+  <header class="intro">
     <h1>TOML to serde.zig</h1>
-    <p class="tagline">
+    <p>
       TOML configs turn into Zig structs annotated for <a href="https://github.com/OrlovEvgeny/serde.zig">serde.zig</a>.
       Use the <em>Strict config</em> preset to bake observed scalar values into struct defaults, so
       missing config keys still produce a usable struct.
@@ -25,16 +25,5 @@
   </header>
 
   <Playground initialFormat="toml" initialTarget="serde-zig" initialPreset="strict" initialExample={{ ...TOML_DEFAULT, target: "serde-zig" }} />
-
-  <footer><small>Local-first. Your input never leaves the browser.</small></footer>
 </main>
 
-<style>
-  :global(body) { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #222; background: #fafafa; }
-  main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; min-height: 100vh; box-sizing: border-box; }
-  header h1 { margin: 0; font-size: 1.5rem; }
-  .tagline { margin: 0.25rem 0 1rem; color: #666; max-width: 70ch; }
-  .tagline a { color: #2a6; }
-  footer { margin-top: 2rem; color: #888; }
-  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; background: #eef; padding: 0 0.25rem; border-radius: 2px; }
-</style>

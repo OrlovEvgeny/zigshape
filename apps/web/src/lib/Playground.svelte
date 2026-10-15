@@ -214,6 +214,26 @@
     ),
   );
   const firstError = $derived(generated.warnings.find((d) => d.severity === "error") ?? null);
+
+  // A pinned format that fails on the active sample while the text clearly
+  // reads as another format (JSON pasted on the YAML page, say): offer a
+  // one-click switch instead of a parser error.
+  const formatMismatch = $derived.by((): Format | null => {
+    if (format === "auto" || !activeSample.trim()) return null;
+    const failed = generated.warnings.some(
+      (d) => d.severity === "error" && (d.src?.sample ?? activeIndex) === activeIndex,
+    );
+    if (!failed) return null;
+    const d = detectFormat(activeSample);
+    if (d.format === format || d.confidence < 0.6) return null;
+    return d.format;
+  });
+
+  function acceptFormatSuggestion() {
+    if (!formatMismatch) return;
+    // NDJSON isn't in the Format dropdown; auto-detect handles it.
+    format = formatMismatch === "ndjson" ? "auto" : formatMismatch;
+  }
   const inputFormatLabel = $derived.by(() => {
     if (format !== "auto") return FORMAT_LABEL[format];
     if (!detectedFormat) return "Auto-detect";
@@ -611,7 +631,13 @@
         <span>{inputLines} line{inputLines === 1 ? "" : "s"}</span>
         <span>{inputSize}</span>
         <span class="grow"></span>
-        <span class="hint">Drop files here to add samples</span>
+        {#if formatMismatch}
+          <button type="button" class="suggest" onclick={acceptFormatSuggestion}>
+            Looks like {FORMAT_LABEL[formatMismatch]}. Parse as {FORMAT_LABEL[formatMismatch]}
+          </button>
+        {:else}
+          <span class="hint">Drop files here to add samples</span>
+        {/if}
       </footer>
       {#if dragDepth > 0}
         <div class="drop" aria-hidden="true">
@@ -670,7 +696,16 @@
               <button type="button" class="empty-error" onclick={() => jumpToWarning(firstError)}>
                 {firstError.message}
               </button>
-              <p class="empty-hint">Fix it on the left, or pick a different format in the toolbar.</p>
+              {#if formatMismatch}
+                <p class="empty-hint">
+                  The input is parsed as {FORMAT_LABEL[format as Format]}, but it looks like {FORMAT_LABEL[formatMismatch]}.
+                </p>
+                <button type="button" class="btn primary" onclick={acceptFormatSuggestion}>
+                  Parse as {FORMAT_LABEL[formatMismatch]}
+                </button>
+              {:else}
+                <p class="empty-hint">Fix it on the left, or pick a different format in the toolbar.</p>
+              {/if}
             {:else}
               <p class="empty-title">Nothing to generate yet</p>
               <p class="empty-hint">Paste a payload on the left, upload a file, or load one from Examples.</p>
@@ -819,6 +854,17 @@
     background: var(--error);
   }
 
+  .suggest {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 11.5px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
   .drop {
     position: absolute;
     inset: 6px;
@@ -857,6 +903,9 @@
     max-width: 36ch;
     color: var(--text-3);
     font-size: 12.5px;
+  }
+  .empty .btn {
+    margin-top: 6px;
   }
   .empty-error {
     max-width: 48ch;

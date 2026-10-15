@@ -7,6 +7,7 @@
   import { Decoration, EditorView, placeholder as placeholderExt, type DecorationSet } from "@codemirror/view";
   import { basicSetup } from "codemirror";
   import { codeHighlighting } from "$lib/highlight";
+  import { toml } from "$lib/toml-lang";
   import { zig } from "$lib/zig-lang";
 
   export type HighlightRange = { from: number; length: number; nonce: number };
@@ -135,6 +136,7 @@
     if (lang === "json") return json();
     if (lang === "yaml") return yaml();
     if (lang === "xml") return xml();
+    if (lang === "toml") return toml();
     if (lang === "zig") return zig();
     return [];
   }

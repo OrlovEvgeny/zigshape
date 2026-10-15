@@ -88,4 +88,9 @@ describe("parseSample", () => {
     expect(v.src.offset).toBe(0);
     expect(v.src.length).toBe(3);
   });
+  test("JSON syntax errors carry a readable message and the error code", () => {
+    const res = parseSample('{"a": ', 0, "json");
+    const errs = res.diagnostics.toArray();
+    expect(errs[0]).toMatchObject({ code: "parse.ValueExpected", message: "Expected a value" });
+  });
 });

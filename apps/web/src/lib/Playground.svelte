@@ -119,7 +119,10 @@
   const effectiveRoot = $derived(rootName.trim() || suggestedRoot || "Root");
 
   const generated = $derived.by(() => {
-    const nonEmpty = samples.filter((s) => s.trim().length > 0);
+    // Empty tabs are skipped, so pipeline sample indices are positions in
+    // `nonEmpty`; `tabOf` maps them back to the tab they came from.
+    const tabOf = samples.flatMap((s, i) => (s.trim().length > 0 ? [i] : []));
+    const nonEmpty = tabOf.map((i) => samples[i]!);
     if (nonEmpty.length === 0) {
       return {
         code: "",
@@ -129,12 +132,16 @@
         resolvedFormat: null as Format | null,
       };
     }
-    const { normalized, warnings, resolvedFormat } = runPipeline({
+    const result = runPipeline({
       samples: nonEmpty,
       rootName: effectiveRoot,
       inferOptions: { ...presetOptions, format },
       overrides,
     });
+    const { normalized, resolvedFormat } = result;
+    const warnings = result.warnings.map((d) =>
+      d.src ? { ...d, src: { ...d.src, sample: tabOf[d.src.sample] ?? d.src.sample } } : d,
+    );
     if (!normalized) {
       return {
         code: "",

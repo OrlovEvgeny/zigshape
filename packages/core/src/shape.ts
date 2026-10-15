@@ -7,7 +7,9 @@ export type Shape =
   | { kind: "array"; path: string; element: Shape }
   | { kind: "object"; path: string; fields: Map<string, FieldShape> }
   | { kind: "map"; valuePath: string; value: Shape }
-  | { kind: "enum"; path: string; variants: EnumVariant[] }
+  /** `literal`: built from ZON enum literals, so variant names must stay
+   *  exactly as written (no snake_case conversion, no rename). */
+  | { kind: "enum"; path: string; variants: EnumVariant[]; literal?: true }
   | {
       kind: "union";
       path: string;

@@ -12,7 +12,16 @@ const SERDE_MODULE: Record<Format, string> = {
   yaml: "yaml",
   toml: "toml",
   xml: "xml",
+  csv: "csv",
+  zon: "zon",
+  toon: "toon",
 };
+
+/** The type a whole document parses into: serde.zig reads CSV as a slice
+ *  of rows, every other format as the root type itself. */
+function documentType(rootName: string, format: Format): string {
+  return format === "csv" ? `[]const ${rootName}` : rootName;
+}
 
 /** Formats where every top-level record is one sample of `rootName`: the
  *  helper parses one line at a time. */
@@ -45,6 +54,14 @@ export function emitParserHelper(
         "",
       ].join("\n");
     }
+    if (format === "zon") {
+      return [
+        "",
+        "// std.zon.parse reads this file into the generated struct; its",
+        "// signature changes between Zig releases, so call it directly.",
+        "",
+      ].join("\n");
+    }
     return [
       "",
       `// std doesn't ship a ${format.toUpperCase()} parser.  Use the serde-zig`,
@@ -53,6 +70,7 @@ export function emitParserHelper(
     ].join("\n");
   }
   const mod = SERDE_MODULE[format];
+  const doc_t = documentType(rootName, format);
   const doc = line
     ? [
         `/// Parses one NDJSON line. Call \`deinit\` on the result to free it.`,
@@ -62,8 +80,8 @@ export function emitParserHelper(
   return [
     "",
     ...doc,
-    `pub fn parse${rootName}(allocator: std.mem.Allocator, ${arg}: []const u8) !serde.Parsed(${rootName}) {`,
-    `    return serde.${mod}.fromSliceManaged(${rootName}, allocator, ${arg});`,
+    `pub fn parse${rootName}(allocator: std.mem.Allocator, ${arg}: []const u8) !serde.Parsed(${doc_t}) {`,
+    `    return serde.${mod}.fromSliceManaged(${doc_t}, allocator, ${arg});`,
     "}",
     "",
   ].join("\n");
@@ -95,7 +113,7 @@ export function emitTestScaffold(
       call = `std.json.parseFromSlice(${rootName}, std.testing.allocator, INPUT, .{})`;
     }
   } else {
-    call = `serde.${SERDE_MODULE[format]}.fromSliceManaged(${rootName}, std.testing.allocator, INPUT)`;
+    call = `serde.${SERDE_MODULE[format]}.fromSliceManaged(${documentType(rootName, format)}, std.testing.allocator, INPUT)`;
   }
 
   if (call === null) {

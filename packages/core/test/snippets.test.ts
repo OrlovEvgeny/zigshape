@@ -45,6 +45,21 @@ describe("emitParserHelper", () => {
     expect(s).toContain("serde.xml.fromSliceManaged(Doc");
   });
 
+  test("serde-zig + csv parses the document into a slice of rows", () => {
+    const s = emitParserHelper("Row", "serde-zig", "csv");
+    expect(s).toContain("!serde.Parsed([]const Row)");
+    expect(s).toContain("serde.csv.fromSliceManaged([]const Row, allocator, input)");
+  });
+
+  test("serde-zig + zon / toon use their serde modules", () => {
+    expect(emitParserHelper("M", "serde-zig", "zon")).toContain("serde.zon.fromSliceManaged(M");
+    expect(emitParserHelper("D", "serde-zig", "toon")).toContain("serde.toon.fromSliceManaged(D");
+  });
+
+  test("plain + zon points at std.zon.parse", () => {
+    expect(emitParserHelper("M", "plain", "zon")).toContain("std.zon.parse");
+  });
+
   test("serde-zig + ndjson parses one line and points at the stream helper", () => {
     const s = emitParserHelper("Row", "serde-zig", "ndjson");
     expect(s).toContain("line: []const u8");

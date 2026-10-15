@@ -8,7 +8,14 @@ export type ZNull = { kind: "null"; src: SrcRef };
 export type ZBool = { kind: "bool"; value: boolean; src: SrcRef };
 export type ZInt = { kind: "int"; value: bigint; src: SrcRef };
 export type ZFloat = { kind: "float"; value: number; src: SrcRef };
-export type ZString = { kind: "string"; value: string; src: SrcRef };
+export type ZString = {
+  kind: "string";
+  value: string;
+  src: SrcRef;
+  /** Set for ZON enum literals (`.debug`): the value names an enum variant
+   *  rather than being free text. */
+  enumLiteral?: true;
+};
 export type ZArray = { kind: "array"; items: ZValue[]; src: SrcRef };
 export type ZObject = { kind: "object"; fields: Map<string, ZField>; src: SrcRef };
 

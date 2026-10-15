@@ -17,6 +17,11 @@ export function detectFormat(input: string): DetectResult {
 
   const first = trimmed[0]!;
 
+  // ZON: a `.{ ... }` literal, possibly after `//` comment lines.
+  if (trimmed.replace(/^(\/\/[^\n]*\n\s*)+/, "").startsWith(".{")) {
+    return { format: "zon", confidence: 0.95, alternatives: [] };
+  }
+
   if (first === "<") {
     // XML element start or `<?xml ...?>` declaration.  No other supported
     // format begins with `<` at the top of the document.
@@ -39,6 +44,16 @@ export function detectFormat(input: string): DetectResult {
       return { format: "toml", confidence: 0.95, alternatives: ["json"] };
     }
     return { format: "json", confidence: 0.9, alternatives: ["toml"] };
+  }
+
+  // TOON array headers (`items[2]:`, `users[2]{id,name}:`) never occur in
+  // YAML.  Without one, a TOON document reads the same as YAML anyway.
+  if (/^[ \t]*("[^"\n]*"|[A-Za-z_][\w.]*)?\[#?\d+[\t|]?\](\{[^}\n]*\})?:/m.test(trimmed)) {
+    return { format: "toon", confidence: 0.9, alternatives: ["yaml"] };
+  }
+
+  if (looksLikeCsv(trimmed)) {
+    return { format: "csv", confidence: 0.85, alternatives: ["yaml"] };
   }
 
   // YAML document marker
@@ -96,6 +111,27 @@ function looksLikeNdjson(input: string): boolean {
     if (hits >= 2) return true;
   }
   return false;
+}
+
+/** A header line of comma-separated names followed by rows with the same
+ *  number of fields (quotes respected). */
+function looksLikeCsv(input: string): boolean {
+  const lines = input.split(/\r?\n/).filter((l) => l.trim() !== "").slice(0, 20);
+  if (lines.length < 2) return false;
+  const header = lines[0]!;
+  if (!header.includes(",") || /[:=]|^\s*[{[<#-]/.test(header)) return false;
+  const width = countFields(header);
+  return lines.slice(1).every((l) => countFields(l) === width);
+}
+
+function countFields(line: string): number {
+  let n = 1;
+  let quoted = false;
+  for (const c of line) {
+    if (c === '"') quoted = !quoted;
+    else if (c === "," && !quoted) n++;
+  }
+  return n;
 }
 
 function looksLikeTomlAssignment(line: string): boolean {

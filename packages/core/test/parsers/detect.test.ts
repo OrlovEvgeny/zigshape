@@ -56,4 +56,18 @@ describe("detectFormat", () => {
   test("XML with leading whitespace and BOM", () => {
     expect(detectFormat("﻿\n  <user/>").format).toBe("xml");
   });
+  test("ZON literal, with or without leading comments", () => {
+    expect(detectFormat(".{ .name = .app }").format).toBe("zon");
+    expect(detectFormat("// manifest\n.{\n    .v = 1,\n}").format).toBe("zon");
+  });
+  test("TOON array header", () => {
+    expect(detectFormat("users[2]{id,name}:\n  1,A\n  2,B\n").format).toBe("toon");
+    expect(detectFormat("tags[2]: a,b\n").format).toBe("toon");
+  });
+  test("CSV header with consistent rows", () => {
+    expect(detectFormat('id,name\n1,Alice\n2,"Bob, Jr."\n').format).toBe("csv");
+  });
+  test("YAML with commas in values is not CSV", () => {
+    expect(detectFormat("name: a, b\nport: 1\n").format).toBe("yaml");
+  });
 });

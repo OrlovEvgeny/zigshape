@@ -10,6 +10,7 @@ import {
   formatDrift,
   generateZig,
   runPipeline,
+  SUPPORTED_FORMATS,
   type AliasStrategy,
   type ArrayStrategy,
   type EnumStrategy,
@@ -73,10 +74,11 @@ Usage:
 
 Directory args are walked recursively; files matching the active --format
 extension(s) become samples (each file = one sample). With --format auto,
-.json / .ndjson / .yaml / .yml / .toml / .xml are picked up.
+.json / .ndjson / .yaml / .yml / .toml / .xml / .csv / .zon / .toon are
+picked up.
 
 Input options:
-  --format auto|json|ndjson|yaml|toml|xml
+  --format auto|json|ndjson|yaml|toml|xml|csv|zon|toon
                                      Input format. Default: auto.
   --stdin                            Read a single sample from stdin.
   --samples-from-array               Treat each top-level array item as a
@@ -207,15 +209,8 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case "--format": {
         const f = next() as FormatArg | undefined;
-        if (
-          f !== "auto" &&
-          f !== "json" &&
-          f !== "ndjson" &&
-          f !== "yaml" &&
-          f !== "toml" &&
-          f !== "xml"
-        ) {
-          throw new Error(`--format must be auto|json|ndjson|yaml|toml|xml (got '${f}')`);
+        if (f !== "auto" && !SUPPORTED_FORMATS.includes(f as Format)) {
+          throw new Error(`--format must be auto|${SUPPORTED_FORMATS.join("|")} (got '${f}')`);
         }
         args.format = f;
         args.explicit.add("format");
@@ -400,12 +395,15 @@ function parseArgs(argv: readonly string[]): Args {
  *  pulled in when walking a directory.  `auto` accepts every recognised
  *  format. */
 const DIR_MODE_EXTENSIONS: Record<FormatArg, readonly string[]> = {
-  auto: [".json", ".ndjson", ".yaml", ".yml", ".toml", ".xml"],
+  auto: [".json", ".ndjson", ".yaml", ".yml", ".toml", ".xml", ".csv", ".zon", ".toon"],
   json: [".json"],
   ndjson: [".ndjson"],
   yaml: [".yaml", ".yml"],
   toml: [".toml"],
   xml: [".xml"],
+  csv: [".csv"],
+  zon: [".zon"],
+  toon: [".toon"],
 };
 
 /** Recursively collect files under a directory whose extensions match the
@@ -556,7 +554,7 @@ export async function run(
           throw new Error(
             `directory ${f}: no files matching ` +
               (args.format === "auto"
-                ? "*.json|*.ndjson|*.yaml|*.yml|*.toml|*.xml"
+                ? DIR_MODE_EXTENSIONS.auto.map((e) => `*${e}`).join("|")
                 : `*.${args.format}`) +
               " (pass --format to widen the filter, or list files explicitly)",
           );

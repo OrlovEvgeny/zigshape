@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { replaceState } from "$app/navigation";
   import Editor, { type EditorLanguage, type HighlightRange } from "$lib/Editor.svelte";
   import Inspector from "$lib/Inspector.svelte";
-  import SampleSource from "$lib/SampleSource.svelte";
+  import Menu from "$lib/Menu.svelte";
+  import SampleSource, { readFiles } from "$lib/SampleSource.svelte";
   import SampleTabs from "$lib/SampleTabs.svelte";
   import Toolbar from "$lib/Toolbar.svelte";
   import Warnings from "$lib/Warnings.svelte";
@@ -40,7 +41,8 @@
   type FormatArg = "auto" | Format;
 
   // Per-format SEO routes pin these values via props; the root playground
-  // leaves them at defaults and lets the toolbar drive everything.
+  // leaves them at defaults and lets the toolbar drive everything.  Props
+  // only seed the initial state.
   type Props = {
     initialFormat?: FormatArg;
     initialTarget?: "plain" | "serde-zig";
@@ -49,70 +51,87 @@
     initialExample?: Example;
   };
 
-  let {
-    initialFormat = "auto",
-    initialTarget,
-    initialPreset = DEFAULT_PRESET,
-    initialRootName,
-    initialExample,
-  }: Props = $props();
+  let props: Props = $props();
+  const init = untrack(() => ({ ...props }));
 
-  const startExample = initialExample ?? EXAMPLES[0]!;
+  const startExample = init.initialExample ?? EXAMPLES[0]!;
+
+  const FORMAT_LABEL: Record<Format, string> = {
+    json: "JSON",
+    ndjson: "NDJSON",
+    yaml: "YAML",
+    toml: "TOML",
+    xml: "XML",
+  };
 
   // Open with a single sample — the user's stated mental model is "see one
   // example, erase it, type something new". Multi-sample examples (loaded
-  // from the toolbar dropdown via loadExample) keep all their samples; only
+  // from the Examples menu via loadExample) keep all their samples; only
   // the *initial* boot trims to the first one. SEO landing pages already
   // pass single-sample examples via `initialExample`, so this only changes
   // the root playground.
   let samples = $state<string[]>([startExample.samples[0] ?? ""]);
   let activeIndex = $state(0);
-  let rootName = $state(initialRootName ?? startExample.rootName);
+  let rootName = $state(init.initialRootName ?? startExample.rootName);
   // The rootName starts pinned (the example or initial prop is an
-  // explicit choice). Editing the active sample drops the pin so the
-  // suggestion effect can take over; typing in the toolbar input or
-  // picking a different example pins again.
+  // explicit choice). Editing samples drops the pin so the suggestion
+  // takes over; typing in the Root input or picking an example pins again.
   let rootNamePinned = $state(true);
-  let target = $state<"plain" | "serde-zig">(initialTarget ?? startExample.target);
-  let format = $state<FormatArg>(initialFormat);
-  let presetId = $state<PresetId>(initialPreset);
+  let target = $state<"plain" | "serde-zig">(init.initialTarget ?? startExample.target);
+  let format = $state<FormatArg>(init.initialFormat ?? "auto");
+  let presetId = $state<PresetId>(init.initialPreset ?? DEFAULT_PRESET);
   let withDocComments = $state(false);
   // Set once the WASM zig fmt module has loaded; formatting itself is
   // synchronous after that.
   let zigFmt = $state.raw<((input: string) => string) | null>(null);
   let zigFmtLoadError = $state<string | null>(null);
   let inputHighlight = $state<HighlightRange | null>(null);
-  let shareNotice = $state<string | null>(null);
   let overrides = $state<Overrides>({});
+  let toast = $state<{ text: string; tone: "info" | "error" } | null>(null);
+  let copied = $state(false);
+  let dragDepth = $state(0);
 
-  const detectedFormat = $derived.by(() => {
-    if (format !== "auto") return null;
-    const sample = samples[activeIndex] ?? "";
-    if (!sample.trim()) return null;
-    return detectFormat(sample).format;
+  const activeSample = $derived(samples[activeIndex] ?? "");
+
+  const detection = $derived.by(() => {
+    if (format !== "auto" || !activeSample.trim()) return null;
+    return detectFormat(activeSample);
   });
-
+  const detectedFormat = $derived(detection?.format ?? null);
   // Confidence (0..1) for the auto-detect. Surfaced in the Format
   // dropdown so the user knows when a heuristic is shaky and they
   // should click into a specific format.
-  const detectedConfidence = $derived.by(() => {
-    if (format !== "auto") return null;
-    const sample = samples[activeIndex] ?? "";
-    if (!sample.trim()) return null;
-    return detectFormat(sample).confidence;
-  });
+  const detectedConfidence = $derived(detection?.confidence ?? null);
 
-  const editorLanguage: EditorLanguage = $derived(
-    format === "json" || format === "yaml" || format === "xml"
-      ? format
-      : format === "auto" && (detectedFormat === "json" || detectedFormat === "yaml" || detectedFormat === "xml")
-        ? detectedFormat
-        : "plain",
-  );
+  const editorLanguage: EditorLanguage = $derived.by(() => {
+    const f = format === "auto" ? detectedFormat : format;
+    if (f === "json" || f === "ndjson") return "json";
+    if (f === "yaml" || f === "xml") return f;
+    return "plain";
+  });
 
   const presetOptions = $derived(
     PRESETS.find((p) => p.id === presetId)?.options ?? {},
   );
+
+  // Auto-suggest a root name from the active sample's structure.  Runs
+  // against the parser (not the inference output) so it works even when
+  // multiple samples disagree.  Only writes back to `rootName` when the
+  // user hasn't pinned it manually.
+  const suggestedRoot = $derived.by(() => {
+    if (!activeSample.trim()) return null;
+    const r = parseSample(activeSample, activeIndex, format);
+    if (!r.value) return null;
+    return suggestRootName(r.value, {
+      xmlRoot: r.xmlRoot,
+      treatRootArrayAsSamples: presetOptions.treatRootArrayAsSamples,
+    });
+  });
+  $effect(() => {
+    if (rootNamePinned) return;
+    const next = suggestedRoot ?? "Root";
+    if (next !== untrack(() => rootName)) rootName = next;
+  });
 
   // An empty Root struct input falls back to the same suggestion the
   // placeholder shows, so the output never disagrees with the field.
@@ -172,45 +191,75 @@
   const displayCode = $derived(formatted.code);
   const formatterError = $derived(formatted.error);
 
-  // Auto-suggest a root name from the active sample's structure.  Runs
-  // against the parser (not the inference output) so it works even when
-  // multiple samples disagree.  Only writes back to `rootName` when the
-  // user hasn't pinned it manually.
-  const suggestedRoot = $derived.by(() => {
-    const sample = samples[activeIndex] ?? "";
-    if (!sample.trim()) return null;
-    const r = parseSample(sample, activeIndex, format);
-    if (!r.value) return null;
-    return suggestRootName(r.value, {
-      xmlRoot: r.xmlRoot,
-      treatRootArrayAsSamples: presetOptions.treatRootArrayAsSamples,
-    });
+  // ---- Status-bar facts ----------------------------------------------
+
+  const errorTabs = $derived(
+    new Set(
+      generated.warnings
+        .filter((d) => d.severity === "error" && d.src)
+        .map((d) => d.src!.sample),
+    ),
+  );
+  const firstError = $derived(generated.warnings.find((d) => d.severity === "error") ?? null);
+  const inputFormatLabel = $derived.by(() => {
+    if (format !== "auto") return FORMAT_LABEL[format];
+    if (!detectedFormat) return "Auto-detect";
+    return FORMAT_LABEL[detectedFormat];
   });
-  $effect(() => {
-    if (rootNamePinned) return;
-    const next = suggestedRoot ?? "Root";
-    if (next !== rootName) rootName = next;
+  const inputLines = $derived(activeSample ? activeSample.split("\n").length : 0);
+  const outputLines = $derived(displayCode ? displayCode.replace(/\n+$/, "").split("\n").length : 0);
+  const declSummary = $derived.by(() => {
+    let structs = 0;
+    let enums = 0;
+    let unions = 0;
+    let fields = 0;
+    for (const d of generated.decls) {
+      if (d.kind === "struct") {
+        structs++;
+        fields += d.fields.length;
+      } else if (d.kind === "enum") enums++;
+      else unions++;
+    }
+    const parts: string[] = [];
+    if (structs) parts.push(`${structs} struct${structs === 1 ? "" : "s"}`);
+    if (enums) parts.push(`${enums} enum${enums === 1 ? "" : "s"}`);
+    if (unions) parts.push(`${unions} union${unions === 1 ? "" : "s"}`);
+    if (fields) parts.push(`${fields} field${fields === 1 ? "" : "s"}`);
+    return parts.join(" · ");
   });
 
-  // Editing the active sample drops the pin so the suggestion takes
-  // over. Tracked via a signature of all samples so multi-tab edits
-  // also unpin. `lastSampleSig` is updated *together* with deliberate
-  // sample mutations (loadExample, share decode) so those don't trigger
-  // an unintended unpin.
-  let lastSampleSig = $state(samples.join(""));
-  $effect(() => {
-    const sig = samples.join("");
-    if (sig === lastSampleSig) return;
-    lastSampleSig = sig;
+  function formatBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
+  }
+  const inputSize = $derived(formatBytes(new TextEncoder().encode(activeSample).length));
+
+  // ---- Sample editing -------------------------------------------------
+
+  function updateActive(text: string) {
+    // A pasted `curl ...` command is replaced by its body; the URL path
+    // seeds the root name when it has a usable segment.
+    const c = tryParseCurl(text);
+    if (c) {
+      samples = samples.map((s, i) => (i === activeIndex ? c.sample : s));
+      if (c.rootHint) {
+        rootName = c.rootHint;
+        rootNamePinned = true;
+      } else {
+        rootNamePinned = false;
+      }
+      notify(`Detected a curl command. Using its body${c.rootHint ? ` and root name ${c.rootHint}` : ""}.`);
+      return;
+    }
+    samples = samples.map((s, i) => (i === activeIndex ? text : s));
     rootNamePinned = false;
-  });
+  }
 
   function loadExample(e: Example) {
     samples = [...e.samples];
     activeIndex = 0;
     rootName = e.rootName;
     rootNamePinned = true;
-    lastSampleSig = samples.join("");
     target = e.target;
     overrides = {};
   }
@@ -234,18 +283,11 @@
 
   function addSamples(texts: string[]) {
     if (texts.length === 0) return;
-    const trimmed = samples[activeIndex]?.trim() ?? "";
-    let next = [...samples];
-    let nextIndex = activeIndex;
-    if (next.length === 1 && trimmed === "") {
-      next = [...texts];
-      nextIndex = next.length - 1;
-    } else {
-      next.push(...texts);
-      nextIndex = next.length - 1;
-    }
-    samples = next;
-    activeIndex = nextIndex;
+    const replaceEmpty = samples.length === 1 && (samples[0]?.trim() ?? "") === "";
+    samples = replaceEmpty ? [...texts] : [...samples, ...texts];
+    activeIndex = samples.length - 1;
+    rootNamePinned = false;
+    notify(`Added ${texts.length} sample${texts.length === 1 ? "" : "s"}.`);
   }
 
   function removeSample(i: number) {
@@ -253,12 +295,64 @@
     samples = samples.filter((_, idx) => idx !== i);
     // Keep the same sample selected when a tab to its left goes away.
     if (i < activeIndex || activeIndex >= samples.length) activeIndex -= 1;
+    rootNamePinned = false;
   }
 
+  // ---- Drag and drop onto the input panel ------------------------------
+
+  function hasFiles(e: DragEvent) {
+    return Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  }
+  function onDragEnter(e: DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+  }
+  function onDragOver(e: DragEvent) {
+    if (hasFiles(e)) e.preventDefault();
+  }
+  function onDragLeave(e: DragEvent) {
+    if (!hasFiles(e)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+  }
+  function onDrop(e: DragEvent) {
+    if (!hasFiles(e)) return;
+    // Capture phase: stop CodeMirror from also inserting the file text.
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth = 0;
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) void readFiles(files, addSamples);
+  }
+
+  // ---- Output actions -------------------------------------------------
+
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  function notify(text: string, tone: "info" | "error" = "info") {
+    toast = { text, tone };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast = null; }, 2600);
+  }
+
+  async function copyWithFallback(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   async function copyZig() {
-    const code = displayCode;
-    if (!code) return;
-    try { await navigator.clipboard.writeText(code); } catch { /* ignore */ }
+    if (!displayCode) return;
+    if (await copyWithFallback(displayCode)) {
+      copied = true;
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => { copied = false; }, 1400);
+    } else {
+      notify("Clipboard is unavailable. Select the code and copy it manually.", "error");
+    }
   }
 
   function downloadZig() {
@@ -278,18 +372,23 @@
     URL.revokeObjectURL(url);
   }
 
-  // The four output-variant buttons.  Each builds its content from the
-  // current generated state so a stale value can never leak into the
-  // clipboard / download.  Format defaults to JSON when the pipeline
-  // hasn't resolved one yet (no samples or mixed) — matches CLI.
+  async function copySnippet(text: string, what: string) {
+    const ok = await copyWithFallback(text);
+    notify(ok ? `${what} copied.` : "Clipboard is unavailable.", ok ? "info" : "error");
+  }
+
+  // The output-variant actions.  Each builds its content from the current
+  // generated state so a stale value can never leak into the clipboard /
+  // download.  Format defaults to JSON when the pipeline hasn't resolved
+  // one yet (no samples or mixed) — matches CLI.
   async function copyParser() {
     if (!generated.normalized) return;
     const fmt: Format = generated.resolvedFormat ?? "json";
-    await copyWithFallback(emitParserHelper(effectiveRoot, target, fmt).trim() + "\n");
+    await copySnippet(emitParserHelper(effectiveRoot, target, fmt).trim() + "\n", "Parse helper");
   }
 
   async function copyBuildSnippet() {
-    await copyWithFallback(emitBuildSnippet(target).trim() + "\n");
+    await copySnippet(emitBuildSnippet(target).trim() + "\n", "build.zig snippet");
   }
 
   async function copyTestScaffold() {
@@ -297,9 +396,7 @@
     const sample = (samples[activeIndex] ?? samples[0] ?? "").trim();
     if (!sample) return;
     const fmt: Format = generated.resolvedFormat ?? "json";
-    await copyWithFallback(
-      emitTestScaffold(effectiveRoot, sample, target, fmt).trim() + "\n",
-    );
+    await copySnippet(emitTestScaffold(effectiveRoot, sample, target, fmt).trim() + "\n", "Test scaffold");
   }
 
   function downloadReport() {
@@ -312,26 +409,12 @@
     );
   }
 
-  function showShareNotice(msg: string) {
-    shareNotice = msg;
-    setTimeout(() => { shareNotice = null; }, 2400);
-  }
-
-  async function copyWithFallback(text: string): Promise<boolean> {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   async function shareConfig() {
     const hash = encodeShareConfig({ rootName, target, format, presetId });
     const url = window.location.origin + window.location.pathname + hash;
     replaceState(hash, {});
     const ok = await copyWithFallback(url);
-    showShareNotice(ok ? "Config link copied to clipboard." : "Config link in URL bar.");
+    notify(ok ? "Link to these settings copied." : "Link is in the address bar.");
   }
 
   async function shareWithSamples() {
@@ -340,12 +423,12 @@
       const url = window.location.origin + window.location.pathname + hash;
       replaceState(hash, {});
       const ok = await copyWithFallback(url);
-      showShareNotice(ok ? "Link with samples copied to clipboard." : "Link with samples in URL bar.");
+      notify(ok ? "Link with samples copied." : "Link with samples is in the address bar.");
     } catch (e) {
       if (e instanceof ShareTooLargeError) {
-        showShareNotice(`Samples too large to share (${e.size} B); use Share config instead.`);
+        notify(`Samples are too large to share (${formatBytes(e.size)} of 8 KB). Share settings only.`, "error");
       } else {
-        showShareNotice("Couldn't build share link.");
+        notify("Couldn't build the share link.", "error");
       }
     }
   }
@@ -355,57 +438,21 @@
       .then((m) => m.loadZigFmt())
       .then((fmt) => { zigFmt = fmt; })
       .catch((e) => { zigFmtLoadError = (e as Error).message; });
-  });
 
-  onMount(() => {
     const decoded = decodeShareHash(window.location.hash);
     if (!decoded) return;
     rootName = decoded.rootName;
     rootNamePinned = true;
     target = decoded.target;
     format = decoded.format;
-    presetId = decoded.presetId;
+    if (PRESETS.some((p) => p.id === decoded.presetId)) presetId = decoded.presetId;
     if (decoded.samples && decoded.samples.length > 0) {
       samples = [...decoded.samples];
       activeIndex = 0;
     }
-    lastSampleSig = samples.join("");
   });
 
-  let activeValue = $derived(samples[activeIndex] ?? "");
-  let curlNotice = $state<string | null>(null);
-  $effect(() => {
-    if (activeValue !== samples[activeIndex]) {
-      samples = samples.map((s, i) => (i === activeIndex ? activeValue : s));
-    }
-  });
-
-  // When the active sample is pasted as a `curl ...` command, replace it
-  // with the extracted body and (if no name has been edited yet) seed the
-  // root struct name from the URL path.  Triggered after the value is
-  // committed so the editor and `samples` stay in sync — the next derive
-  // recomputes `activeValue` from the new `samples[activeIndex]`.
-  $effect(() => {
-    const v = samples[activeIndex];
-    if (!v) return;
-    const c = tryParseCurl(v);
-    if (!c) return;
-    const next = [...samples];
-    next[activeIndex] = c.sample;
-    samples = next;
-    // Sample changed via curl-paste, which the sample-edit effect would
-    // also catch (and unpin). Update lastSampleSig now so we don't
-    // double-process; if a URL hint exists, pin to that.
-    lastSampleSig = samples.join("");
-    if (c.rootHint) {
-      rootName = c.rootHint;
-      rootNamePinned = true;
-    } else {
-      rootNamePinned = false;
-    }
-    curlNotice = `Detected curl. Extracted body${c.rootHint ? ` and set root to ${c.rootHint}` : ""}.`;
-    setTimeout(() => { curlNotice = null; }, 2400);
-  });
+  // ---- Jump to source ---------------------------------------------------
 
   function jumpToWarning(d: Diagnostic) {
     if (!d.src) return;
@@ -465,82 +512,364 @@
   }
 </script>
 
-<Toolbar
-  bind:rootName
-  bind:target
-  bind:format
-  bind:presetId
-  bind:withDocComments
-  detectedFormat={detectedFormat ?? null}
-  detectedConfidence={detectedConfidence ?? null}
-  onLoadExample={loadExample}
-  onCopy={copyZig}
-  onDownload={downloadZig}
-  onShareConfig={shareConfig}
-  onShareWithSamples={shareWithSamples}
-  onCopyParser={copyParser}
-  onCopyBuildSnippet={copyBuildSnippet}
-  onCopyTestScaffold={copyTestScaffold}
-  onDownloadReport={downloadReport}
-  onRootNameInput={() => (rootNamePinned = true)}
-  suggestedRoot={suggestedRoot}
-  canCopy={!!displayCode}
-/>
+<div class="playground">
+  <Toolbar
+    bind:rootName
+    bind:target
+    bind:format
+    bind:presetId
+    bind:withDocComments
+    {detectedFormat}
+    {detectedConfidence}
+    onLoadExample={loadExample}
+    onShareConfig={shareConfig}
+    onShareWithSamples={shareWithSamples}
+    onRootNameInput={() => (rootNamePinned = true)}
+    {suggestedRoot}
+    rootAuto={!rootNamePinned}
+  />
 
-{#if shareNotice}
-  <p class="share-notice">{shareNotice}</p>
-{/if}
-{#if curlNotice}
-  <p class="share-notice">{curlNotice}</p>
-{/if}
-{#if formatterError}
-  <p class="share-notice error">zig fmt failed ({formatterError}); showing unformatted output.</p>
-{/if}
+  <div class="workspace">
+    <section
+      class="panel"
+      class:dragging={dragDepth > 0}
+      aria-label="Input"
+      ondragentercapture={onDragEnter}
+      ondragovercapture={onDragOver}
+      ondragleavecapture={onDragLeave}
+      ondropcapture={onDrop}
+    >
+      <header class="panel-head">
+        <SampleTabs
+          {samples}
+          {activeIndex}
+          {errorTabs}
+          onSelect={(i) => (activeIndex = i)}
+          onAdd={addSample}
+          onRemove={removeSample}
+        />
+        <SampleSource onAddSamples={addSamples} />
+      </header>
+      <div class="panel-body">
+        <Editor
+          value={activeSample}
+          onChange={updateActive}
+          language={editorLanguage}
+          highlight={inputHighlight}
+          placeholder="Paste JSON, YAML, TOML or XML, or a curl command with a -d body"
+          label="Input sample"
+        />
+      </div>
+      <footer class="status">
+        <span class="strong">{inputFormatLabel}</span>
+        {#if format === "auto" && detectedConfidence !== null}
+          <span title="Auto-detect confidence">{Math.round(detectedConfidence * 100)}% sure</span>
+        {/if}
+        <span>{inputLines} line{inputLines === 1 ? "" : "s"}</span>
+        <span>{inputSize}</span>
+        <span class="grow"></span>
+        <span class="hint">Drop files here to add samples</span>
+      </footer>
+      {#if dragDepth > 0}
+        <div class="drop" aria-hidden="true">
+          <span>Drop to add as {samples.length === 1 && !samples[0]?.trim() ? "the sample" : "new samples"}</span>
+        </div>
+      {/if}
+    </section>
 
-<section class="panes">
-  <div class="pane">
-    <SampleSource onAddSamples={addSamples} />
-    <SampleTabs
-      {samples}
-      {activeIndex}
-      onSelect={(i) => (activeIndex = i)}
-      onAdd={addSample}
-      onRemove={removeSample}
+    <section class="panel" aria-label="Generated Zig">
+      <header class="panel-head out">
+        <span class="file">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 1h4.5l2.5 2.5V11h-7z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" /><path d="M7 1v2.5h2.5" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" /></svg>
+          <code>{effectiveRoot}.zig</code>
+        </span>
+        <span class="actions">
+          <button type="button" class="btn sm" onclick={copyZig} disabled={!displayCode} aria-live="polite">
+            {#if copied}
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3" fill="none" stroke="var(--ok)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              Copied
+            {:else}
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.1" /><path d="M8.5 1.5h-6a1 1 0 0 0-1 1v6" fill="none" stroke="currentColor" stroke-width="1.1" /></svg>
+              Copy
+            {/if}
+          </button>
+          <button type="button" class="btn sm icon" onclick={downloadZig} disabled={!displayCode} title="Download {effectiveRoot}.zig" aria-label="Download {effectiveRoot}.zig">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5V8M3.5 5.5L6 8l2.5-2.5M1.5 8.5v2h9v-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </button>
+          <Menu label="More" size="sm" variant="ghost" align="end" width="280px">
+            <div class="menu-heading">Copy companion code</div>
+            <button type="button" class="menu-item" role="menuitem" onclick={copyParser} disabled={!displayCode}>
+              <span>Parse helper</span>
+              <small>parse{effectiveRoot}(allocator, input) for the detected format</small>
+            </button>
+            <button type="button" class="menu-item" role="menuitem" onclick={copyTestScaffold} disabled={!displayCode}>
+              <span>Test scaffold</span>
+              <small>A zig test that parses the active sample</small>
+            </button>
+            <button type="button" class="menu-item" role="menuitem" onclick={copyBuildSnippet}>
+              <span>build.zig snippet</span>
+              <small>Dependency wiring for {target === "serde-zig" ? "serde.zig" : "std.json"}</small>
+            </button>
+            <div class="menu-sep"></div>
+            <button type="button" class="menu-item" role="menuitem" onclick={downloadReport} disabled={!displayCode}>
+              <span>Download schema report</span>
+              <small>{effectiveRoot}.schema.json for zigshape --check-drift in CI</small>
+            </button>
+          </Menu>
+        </span>
+      </header>
+      <div class="panel-body">
+        <Editor value={displayCode} language="zig" readonly label="Generated Zig" />
+        {#if !displayCode}
+          <div class="empty">
+            {#if firstError}
+              <p class="empty-title">The input doesn't parse yet</p>
+              <button type="button" class="empty-error" onclick={() => jumpToWarning(firstError)}>
+                {firstError.message}
+              </button>
+              <p class="empty-hint">Fix it on the left, or pick a different format in the toolbar.</p>
+            {:else}
+              <p class="empty-title">Nothing to generate yet</p>
+              <p class="empty-hint">Paste a payload on the left, upload a file, or load one from Examples.</p>
+            {/if}
+          </div>
+        {/if}
+      </div>
+      <footer class="status">
+        {#if !displayCode}
+          <span>Waiting for input</span>
+        {:else if formatterError}
+          <span class="fmt bad" title={formatterError}><span class="dot"></span>zig fmt failed, showing raw output</span>
+        {:else if zigFmt}
+          <span class="fmt ok"><span class="dot"></span>zig fmt</span>
+        {:else}
+          <span class="fmt"><span class="dot"></span>loading zig fmt</span>
+        {/if}
+        {#if declSummary}<span>{declSummary}</span>{/if}
+        <span class="grow"></span>
+        {#if displayCode}<span>{outputLines} lines</span>{/if}
+      </footer>
+    </section>
+  </div>
+
+  <div class="report">
+    <Warnings warnings={generated.warnings} {samples} onJump={jumpToWarning} />
+    <Inspector
+      decls={generated.decls}
+      {overrides}
+      onJump={jumpToPath}
+      onSetOverride={setOverride}
+      onClearAll={clearAllOverrides}
     />
-    <Editor bind:value={activeValue} language={editorLanguage} highlight={inputHighlight} />
   </div>
-  <div class="pane">
-    <h2>Zig</h2>
-    <Editor value={displayCode || "// (waiting for valid input)"} language="zig" readonly />
-  </div>
-</section>
+</div>
 
-<Warnings warnings={generated.warnings} onJump={jumpToWarning} />
-<Inspector
-  decls={generated.decls}
-  {overrides}
-  onJump={jumpToPath}
-  onSetOverride={setOverride}
-  onClearAll={clearAllOverrides}
-/>
+{#if toast}
+  <div class="toast" class:error={toast.tone === "error"} role="status">{toast.text}</div>
+{/if}
 
 <style>
-  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; min-height: 28rem; }
-  .pane { display: flex; flex-direction: column; min-height: 0; }
-  .pane h2 { margin: 0 0 0.5rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #666; }
-  .share-notice {
-    margin: 0 0 0.75rem;
-    padding: 0.4rem 0.7rem;
-    background: #f1f7ff;
-    border-left: 3px solid #6c8aff;
-    border-radius: 0 4px 4px 0;
-    color: #234;
-    font-size: 0.85rem;
+  .playground {
+    display: flex;
+    flex-direction: column;
   }
-  .share-notice.error {
-    background: #fff3f0;
-    border-left-color: #d44;
-    color: #722;
+
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    height: clamp(420px, calc(100vh - 320px), 760px);
   }
-  @media (max-width: 800px) { .panes { grid-template-columns: 1fr; min-height: 20rem; } }
+
+  .panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--editor-bg);
+    overflow: hidden;
+  }
+  .panel:focus-within {
+    border-color: var(--border-strong);
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: none;
+    height: 38px;
+    padding: 0 6px 0 4px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .panel-head.out {
+    padding-left: 12px;
+  }
+  .file {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--text-3);
+  }
+  .file code {
+    overflow: hidden;
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .panel-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: none;
+    height: 28px;
+    padding: 0 12px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-3);
+    font-size: 11.5px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .status .strong {
+    color: var(--text-2);
+    font-weight: 500;
+  }
+  .status .grow {
+    flex: 1;
+  }
+  .fmt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .fmt .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border-strong);
+  }
+  .fmt.ok .dot {
+    background: var(--ok);
+  }
+  .fmt.bad {
+    color: var(--error);
+  }
+  .fmt.bad .dot {
+    background: var(--error);
+  }
+
+  .drop {
+    position: absolute;
+    inset: 6px;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    border: 1.5px dashed var(--accent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    pointer-events: none;
+  }
+
+  .empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 24px;
+    background: var(--editor-bg);
+    text-align: center;
+  }
+  .empty-title {
+    margin: 0;
+    color: var(--text);
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+  .empty-hint {
+    margin: 0;
+    max-width: 36ch;
+    color: var(--text-3);
+    font-size: 12.5px;
+  }
+  .empty-error {
+    max-width: 48ch;
+    padding: 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
+    border-radius: var(--radius-sm);
+    background: var(--error-soft);
+    color: var(--error);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .report {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    z-index: 50;
+    max-width: calc(100vw - 32px);
+    padding: 9px 14px;
+    border-radius: var(--radius);
+    background: var(--primary);
+    color: var(--primary-text);
+    box-shadow: var(--shadow-pop);
+    font-size: 13px;
+    transform: translateX(-50%);
+    animation: toast-in 0.16s ease-out;
+  }
+  .toast.error {
+    background: var(--error);
+    color: #fff;
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 6px);
+    }
+  }
+
+  @media (max-width: 900px) {
+    .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      height: auto;
+    }
+    .panel {
+      height: 400px;
+    }
+    .hint {
+      display: none;
+    }
+  }
 </style>

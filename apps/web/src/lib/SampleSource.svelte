@@ -1,42 +1,43 @@
 <script lang="ts">
+  // Upload and fetch-from-URL controls for the input panel header.  Drag
+  // and drop is handled by the panel itself so the whole editor is a drop
+  // target.
+  import { tick } from "svelte";
+
   type Props = {
     onAddSamples: (texts: string[]) => void;
   };
 
   let { onAddSamples }: Props = $props();
 
+  let urlOpen = $state(false);
   let urlValue = $state("");
   let urlError = $state<string | null>(null);
   let urlLoading = $state(false);
-  let dragOver = $state(false);
-
-  async function readFiles(files: FileList | File[]) {
-    const list = files instanceof FileList ? Array.from(files) : files;
-    const texts = await Promise.all(list.map((f) => f.text()));
-    if (texts.length > 0) onAddSamples(texts);
-  }
-
-  function onDrop(e: DragEvent) {
-    e.preventDefault();
-    dragOver = false;
-    const dt = e.dataTransfer;
-    if (!dt) return;
-    if (dt.files && dt.files.length > 0) void readFiles(dt.files);
-  }
-
-  function onDragOver(e: DragEvent) {
-    e.preventDefault();
-    dragOver = true;
-  }
-
-  function onDragLeave() {
-    dragOver = false;
-  }
+  let root: HTMLDivElement;
+  let urlInput = $state<HTMLInputElement>();
 
   function onPick(e: Event) {
     const t = e.currentTarget as HTMLInputElement;
-    if (t.files && t.files.length > 0) void readFiles(t.files);
+    if (t.files && t.files.length > 0) void readFiles(t.files, onAddSamples);
     t.value = "";
+  }
+
+  async function toggleUrl() {
+    urlOpen = !urlOpen;
+    urlError = null;
+    if (urlOpen) {
+      await tick();
+      urlInput?.focus();
+    }
+  }
+
+  function onWindowPointer(e: PointerEvent) {
+    if (urlOpen && !root.contains(e.target as Node)) urlOpen = false;
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && urlOpen) urlOpen = false;
   }
 
   async function fetchUrl() {
@@ -53,85 +54,86 @@
       const text = await r.text();
       onAddSamples([text]);
       urlValue = "";
+      urlOpen = false;
     } catch (e) {
       urlError =
-        (e instanceof Error && e.message.startsWith("HTTP "))
-          ? e.message
-          : "URL didn’t allow cross-origin fetch — paste the body instead.";
+        e instanceof Error && e.message.startsWith("HTTP ")
+          ? `Request failed with ${e.message}.`
+          : "The server doesn't allow cross-origin reads. Paste the response body instead.";
     } finally {
       urlLoading = false;
     }
   }
 </script>
 
-<div
-  class="source"
-  class:drag-over={dragOver}
-  ondrop={onDrop}
-  ondragover={onDragOver}
-  ondragleave={onDragLeave}
-  role="region"
-  aria-label="Add sample"
->
-  <div class="row">
-    <label class="upload">
-      <input type="file" multiple onchange={onPick} accept=".json,.yaml,.yml,.toml,.xml,application/json,text/plain,text/yaml,application/xml" />
-      <span>Upload file(s)</span>
-    </label>
+<script lang="ts" module>
+  export async function readFiles(files: FileList | File[], add: (texts: string[]) => void) {
+    const list = files instanceof FileList ? Array.from(files) : files;
+    const texts = await Promise.all(list.map((f) => f.text()));
+    if (texts.length > 0) add(texts);
+  }
+</script>
 
-    <span class="or">or drop files</span>
+<svelte:window onpointerdown={onWindowPointer} onkeydown={onKeydown} />
 
-    <span class="spacer"></span>
+<div class="source" bind:this={root}>
+  <label class="btn ghost sm upload" title="Add files as samples">
+    <input
+      type="file"
+      multiple
+      onchange={onPick}
+      accept=".json,.ndjson,.jsonl,.yaml,.yml,.toml,.xml,application/json,text/plain,text/yaml,application/xml"
+    />
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 8V1.5M3.5 4L6 1.5 8.5 4M1.5 8.5v2h9v-2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+    <span>Upload</span>
+  </label>
+  <button type="button" class="btn ghost sm" aria-expanded={urlOpen} onclick={toggleUrl} title="Fetch a sample from a URL">
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M5 7a2.5 2.5 0 0 0 3.5 0l1.75-1.75a2.47 2.47 0 0 0-3.5-3.5L6 2.5M7 5a2.5 2.5 0 0 0-3.5 0L1.75 6.75a2.47 2.47 0 0 0 3.5 3.5L6 9.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
+    <span>URL</span>
+  </button>
 
+  {#if urlOpen}
     <form
-      class="url-form"
+      class="url-pop"
       onsubmit={(e) => {
         e.preventDefault();
         void fetchUrl();
       }}
     >
-      <input
-        type="url"
-        placeholder="Fetch URL (CORS only)"
-        bind:value={urlValue}
-        spellcheck="false"
-        autocomplete="off"
-      />
-      <button type="submit" disabled={urlLoading || urlValue.trim() === ""}>
-        {urlLoading ? "Fetching…" : "Fetch"}
-      </button>
+      <div class="row">
+        <input
+          bind:this={urlInput}
+          class="input mono"
+          type="url"
+          placeholder="https://api.example.com/users/1"
+          bind:value={urlValue}
+          spellcheck="false"
+          autocomplete="off"
+          aria-label="Sample URL"
+        />
+        <button type="submit" class="btn primary" disabled={urlLoading || urlValue.trim() === ""}>
+          {urlLoading ? "Fetching…" : "Fetch"}
+        </button>
+      </div>
+      {#if urlError}
+        <p class="error">{urlError}</p>
+      {:else}
+        <p class="hint">Fetched from your browser. Works only when the server sends CORS headers.</p>
+      {/if}
     </form>
-  </div>
-
-  {#if urlError}
-    <p class="error">{urlError}</p>
   {/if}
-  <p class="privacy">Fetched and dropped content stays in your browser.</p>
 </div>
 
 <style>
   .source {
-    border: 1px dashed #ccc;
-    border-radius: 4px;
-    padding: 0.5rem 0.75rem;
-    margin-bottom: 0.5rem;
-    background: #fafafa;
-    transition: border-color 0.15s, background 0.15s;
-  }
-  .source.drag-over {
-    border-color: #6c8aff;
-    background: #eef2ff;
-  }
-  .row {
+    position: relative;
     display: flex;
-    gap: 0.6rem;
     align-items: center;
-    flex-wrap: wrap;
+    gap: 2px;
   }
   .upload {
     position: relative;
-    display: inline-flex;
-    cursor: pointer;
+    overflow: hidden;
   }
   .upload input {
     position: absolute;
@@ -139,42 +141,49 @@
     opacity: 0;
     cursor: pointer;
   }
-  .upload span {
-    padding: 0.35rem 0.7rem;
-    font-size: 0.85rem;
-    border: 1px solid #ccc;
-    background: #fff;
-    border-radius: 4px;
+  .upload:focus-within {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
   }
-  .upload:hover span { background: #f3f3f3; }
-  .or { color: #888; font-size: 0.8rem; }
-  .spacer { flex: 1 1 auto; }
-  .url-form { display: flex; gap: 0.35rem; }
-  .url-form input {
-    padding: 0.35rem 0.5rem;
-    font-size: 0.85rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    min-width: 14rem;
+  .url-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow-pop);
+    animation: pop-in 0.12s ease-out;
   }
-  .url-form button {
-    padding: 0.35rem 0.85rem;
-    font-size: 0.85rem;
-    border: 1px solid #ccc;
-    background: #fff;
-    border-radius: 4px;
-    cursor: pointer;
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
   }
-  .url-form button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .url-form button:hover:not(:disabled) { background: #f3f3f3; }
+  .row {
+    display: flex;
+    gap: 6px;
+  }
+  .row .input {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .hint,
   .error {
-    margin: 0.4rem 0 0;
-    color: #b00;
-    font-size: 0.8rem;
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.4;
   }
-  .privacy {
-    margin: 0.4rem 0 0;
-    color: #888;
-    font-size: 0.75rem;
+  .hint {
+    color: var(--text-3);
+  }
+  .error {
+    color: var(--error);
   }
 </style>

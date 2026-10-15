@@ -398,6 +398,21 @@ function inferUnion(
     { path: elementPath },
   );
 
+  // Detection reads the tag from inside each object, so the samples are
+  // internally tagged; external and adjacent describe another wire shape.
+  if (taggingStyle === "external" || taggingStyle === "adjacent") {
+    const first = variants[0]?.tagValue ?? "variant";
+    const expected =
+      taggingStyle === "external"
+        ? `{"${first}": {...}}`
+        : `{"${tagField}": "${first}", "data": {...}}`;
+    diag.warn(
+      "infer.union_style_mismatch",
+      `Samples at ${elementPath} carry the tag inside each object ('${tagField}'), which is the internal style; the ${taggingStyle} style expects ${expected} on the wire and won't parse these samples`,
+      { path: elementPath },
+    );
+  }
+
   // Untagged unions rely on serde.zig disambiguating variants by structure
   // alone — flag overlaps the user must resolve manually.
   if (taggingStyle === "untagged") {

@@ -11,7 +11,7 @@
   import { zig } from "$lib/zig-lang";
 
   export type HighlightRange = { from: number; length: number; nonce: number };
-  export type EditorLanguage = "json" | "yaml" | "toml" | "xml" | "zig" | "plain";
+  export type EditorLanguage = "json" | "yaml" | "toml" | "xml" | "csv" | "zig" | "plain";
 
   type Props = {
     value: string;

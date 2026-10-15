@@ -226,4 +226,55 @@ json = []
 </soap:Envelope>`,
     ],
   },
+  {
+    id: "orders-csv",
+    label: "Orders export (CSV)",
+    format: "csv",
+    rootName: "Order",
+    target: "serde-zig",
+    samples: [
+      `id,customer,total,currency,paid,shipped_at
+1001,Alice,49.90,EUR,true,2026-03-02
+1002,"Bob, Jr.",12.5,USD,false,
+1003,Carol,230,EUR,true,2026-03-04
+`,
+    ],
+  },
+  {
+    id: "worker-zon",
+    label: "Worker config (ZON)",
+    format: "zon",
+    rootName: "Config",
+    target: "plain",
+    samples: [
+      `.{
+    .name = "invoice-worker",
+    .log_level = .info,
+    .concurrency = 4,
+    .queues = .{ "invoices", "receipts" },
+    .database = .{
+        .host = "localhost",
+        .port = 5432,
+        .pool_size = 8,
+    },
+}
+`,
+    ],
+  },
+  {
+    id: "users-toon",
+    label: "User list (TOON)",
+    format: "toon",
+    rootName: "Directory",
+    target: "serde-zig",
+    samples: [
+      `users[3]{id,name,role,active}:
+  1,Alice,admin,true
+  2,Bob,editor,false
+  3,Carol,viewer,true
+page: 1
+total: 3
+`,
+    ],
+  },
 ];

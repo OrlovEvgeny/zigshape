@@ -11,6 +11,7 @@
   import Warnings from "$lib/Warnings.svelte";
   import { tryParseCurl } from "$lib/curl";
   import { EXAMPLES, type Example } from "$lib/examples";
+  import { FORMAT_LABEL } from "$lib/formats";
   import {
     applyEdit,
     cliCommand,
@@ -34,6 +35,7 @@
     emitParserHelper,
     emitTestScaffold,
     generateZig,
+    isRecordFormat,
     parseSample,
     pathSrcMap,
     runPipeline,
@@ -65,14 +67,6 @@
   const init = untrack(() => ({ ...props }));
 
   const startExample = init.initialExample ?? EXAMPLES[0]!;
-
-  const FORMAT_LABEL: Record<Format, string> = {
-    json: "JSON",
-    ndjson: "NDJSON",
-    yaml: "YAML",
-    toml: "TOML",
-    xml: "XML",
-  };
 
   // Open with a single sample — the user's stated mental model is "see one
   // example, erase it, type something new". Multi-sample examples (loaded
@@ -118,7 +112,10 @@
   const editorLanguage: EditorLanguage = $derived.by(() => {
     const f = format === "auto" ? detectedFormat : format;
     if (f === "json" || f === "ndjson") return "json";
-    if (f === "yaml" || f === "xml" || f === "toml") return f;
+    if (f === "yaml" || f === "xml" || f === "toml" || f === "csv") return f;
+    // ZON is Zig syntax; TOON's indentation and `key: value` read like YAML.
+    if (f === "zon") return "zig";
+    if (f === "toon") return "yaml";
     return "plain";
   });
 
@@ -136,7 +133,8 @@
     if (!r.value) return null;
     return suggestRootName(r.value, {
       xmlRoot: r.xmlRoot,
-      treatRootArrayAsSamples: options.treatRootArrayAsSamples,
+      treatRootArrayAsSamples:
+        options.treatRootArrayAsSamples || isRecordFormat(format === "auto" ? detectFormat(activeSample).format : format),
     });
   });
   $effect(() => {
@@ -234,8 +232,7 @@
 
   function acceptFormatSuggestion() {
     if (!formatMismatch) return;
-    // NDJSON isn't in the Format dropdown; auto-detect handles it.
-    format = formatMismatch === "ndjson" ? "auto" : formatMismatch;
+    format = formatMismatch;
   }
   const inputFormatLabel = $derived.by(() => {
     if (format !== "auto") return FORMAT_LABEL[format];

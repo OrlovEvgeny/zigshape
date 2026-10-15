@@ -2,6 +2,7 @@
   import type { Format } from "@zigshape/core";
   import Menu from "./Menu.svelte";
   import { EXAMPLES, type Example } from "./examples";
+  import { FORMAT_LABEL, FORMATS } from "./formats";
   import { PRESETS, type PresetId } from "./presets";
 
   type FormatArg = "auto" | Format;
@@ -42,14 +43,6 @@
     rootAuto = false,
   }: Props = $props();
 
-  const FORMAT_LABEL: Record<Format, string> = {
-    json: "JSON",
-    ndjson: "NDJSON",
-    yaml: "YAML",
-    toml: "TOML",
-    xml: "XML",
-  };
-
   const autoLabel = $derived(
     detectedFormat
       ? `Auto · ${FORMAT_LABEL[detectedFormat]}${detectedConfidence !== null ? ` ${Math.round(detectedConfidence * 100)}%` : ""}`
@@ -83,10 +76,9 @@
       <span class="label">Format</span>
       <select class="select" bind:value={format} aria-label="Input format">
         <option value="auto">{autoLabel}</option>
-        <option value="json">JSON</option>
-        <option value="yaml">YAML</option>
-        <option value="toml">TOML</option>
-        <option value="xml">XML</option>
+        {#each FORMATS as f (f)}
+          <option value={f}>{FORMAT_LABEL[f]}</option>
+        {/each}
       </select>
     </label>
 

@@ -10,6 +10,12 @@ export type ZigIntWidth =
   | "i64"
   | "isize";
 export type ZigStringRepr = "slice" | "mut" | "sentinel";
+export type ZigMapRepr = "string-hash-map" | "json-array-hash-map";
+
+/** serde.zig's dynamic value type, written with an inline `@import` so it
+ *  resolves inside structs that declare `pub const serde` (a bare
+ *  `serde.Value` there is an ambiguous reference). */
+export const SERDE_VALUE = '@import("serde").Value';
 
 export type ZigType =
   | { kind: "bool" }
@@ -20,9 +26,9 @@ export type ZigType =
   | { kind: "arraylist"; element: ZigType }
   | { kind: "fixedArray"; length: number; element: ZigType }
   | { kind: "ref"; structName: string }
-  | { kind: "stringMap"; value: ZigType }
+  | { kind: "stringMap"; value: ZigType; repr?: ZigMapRepr }
   | { kind: "json" }
-  /** `serde.Value` from serde.zig — needs the serde module imported. */
+  /** `serde.Value` from serde.zig, rendered as SERDE_VALUE. */
   | { kind: "serdeValue" }
   /** `@compileError("...")` placeholder — file refuses to compile until the
    *  user replaces the type. */
@@ -59,11 +65,12 @@ export function renderZigType(t: ZigType): string {
     case "ref":
       return t.structName;
     case "stringMap":
-      return "std.StringHashMap(" + renderZigType(t.value) + ")";
+      return (t.repr === "json-array-hash-map" ? "std.json.ArrayHashMap(" : "std.StringHashMap(") +
+        renderZigType(t.value) + ")";
     case "json":
       return "std.json.Value";
     case "serdeValue":
-      return "serde.Value";
+      return SERDE_VALUE;
     case "compileError":
       return `@compileError(${JSON.stringify(t.message)})`;
     case "optional":
@@ -84,7 +91,7 @@ export function suggestAlternatives(t: ZigType): string[] {
   const out: string[] = [];
   switch (t.kind) {
     case "string": {
-      out.push("[]const u8", "[]u8", "[:0]const u8", "serde.Value");
+      out.push("[]const u8", "[]u8", "[:0]const u8", SERDE_VALUE);
       break;
     }
     case "int": {
@@ -93,7 +100,7 @@ export function suggestAlternatives(t: ZigType): string[] {
       break;
     }
     case "f64":
-      out.push("f32", "[]const u8", "serde.Value");
+      out.push("f32", "[]const u8", SERDE_VALUE);
       break;
     case "slice":
       out.push(
@@ -114,20 +121,20 @@ export function suggestAlternatives(t: ZigType): string[] {
       );
       break;
     case "stringMap":
-      out.push("serde.Value", "std.json.Value");
+      out.push(SERDE_VALUE, "std.json.Value");
       break;
     case "json":
-      out.push("serde.Value", "[]const u8", '@compileError("zigshape: replace with concrete type")');
+      out.push(SERDE_VALUE, "[]const u8", '@compileError("zigshape: replace with concrete type")');
       break;
     case "serdeValue":
       out.push("std.json.Value", "[]const u8");
       break;
     case "compileError":
-      out.push("std.json.Value", "serde.Value", "[]const u8");
+      out.push("std.json.Value", SERDE_VALUE, "[]const u8");
       break;
     case "optional": {
       const inner = renderZigType(t.inner);
-      out.push(inner, "?serde.Value");
+      out.push(inner, `?${SERDE_VALUE}`);
       break;
     }
     case "ref":

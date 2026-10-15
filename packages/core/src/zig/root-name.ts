@@ -1,4 +1,4 @@
-import { sanitizeStructName, singularize } from "./identifier";
+import { identifierSource, sanitizeStructName, singularize } from "./identifier";
 import type { ZValue } from "../value";
 
 /** Heuristics for picking a root struct name from a parsed sample so users
@@ -26,7 +26,7 @@ export function suggestRootName(
   opts: { xmlRoot?: string; treatRootArrayAsSamples?: boolean } = {},
 ): string | null {
   if (opts.xmlRoot) {
-    const name = sanitizeStructName(opts.xmlRoot);
+    const name = sanitizeStructName(identifierSource(opts.xmlRoot));
     if (name && name !== "Auto") return name;
   }
 

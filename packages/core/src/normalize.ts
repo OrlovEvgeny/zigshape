@@ -1,9 +1,17 @@
 import { DiagnosticBag } from "./diagnostics";
 import type { Observation, ObservationMap } from "./observe";
 import type { FieldShape, Shape, UnionTaggingStyle, UnionVariant } from "./shape";
-import { escapeZigString, sanitizeFieldName, sanitizeStructName, singularize } from "./zig/identifier";
-import { pickIntWidth, type ZigStringRepr, type ZigType } from "./zig/types";
-import type { ArrayStrategy, IntStrategy, StringStrategy, UnknownStrategy } from "./options";
+import {
+  escapeZigString,
+  identifierSource,
+  sanitizeFieldName,
+  sanitizeStructName,
+  singularize,
+  wireFieldName,
+  type SanitizedIdentifier,
+} from "./zig/identifier";
+import { pickIntWidth, type ZigMapRepr, type ZigStringRepr, type ZigType } from "./zig/types";
+import type { ArrayStrategy, FieldNames, IntStrategy, StringStrategy, UnknownStrategy } from "./options";
 
 export type ZigField = {
   /** Identifier as it appears in Zig source (may be `@"…"`). */
@@ -117,8 +125,8 @@ export type NormalizeResult = {
   decls: Decl[];
   needsStd: boolean;
   /** Set when the result references `serde.Value` (only via `--unknown
-   *  serde-value`).  Generator emits `const serde = @import("serde");`
-   *  even on the plain target so the file compiles. */
+   *  serde-value`).  The type renders with an inline `@import("serde")`,
+   *  so the file compiles on either target without a separate import. */
   needsSerde: boolean;
   /** XML root element name from the parser, plumbed through so the
    *  serde-zig decorator can emit `.xml_root = "<name>"` on the root struct.
@@ -132,6 +140,10 @@ export type NormalizeOptions = {
   stringStrategy?: StringStrategy;
   /** Array codegen strategy.  See `ArrayStrategy`.  Default `"slice"`. */
   arrayStrategy?: ArrayStrategy;
+  /** Zig type for detected maps.  Default `"string-hash-map"`. */
+  mapType?: ZigMapRepr;
+  /** Field / variant identifier style.  Default `"snake_case"`. */
+  fieldNames?: FieldNames;
   /** Unknown-shape strategy.  See `UnknownStrategy`.  Default
    *  `"std-json-value"`. */
   unknownStrategy?: UnknownStrategy;
@@ -160,6 +172,8 @@ type NormalizeState = {
   intStrategy: IntStrategy;
   stringRepr: ZigStringRepr;
   arrayStrategy: ArrayStrategy;
+  mapType: ZigMapRepr;
+  fieldNames: FieldNames;
   unknownStrategy: UnknownStrategy;
   defaultsFromSamples: boolean;
   observations?: ObservationMap;
@@ -176,6 +190,8 @@ export function normalize(root: Shape, options: NormalizeOptions): NormalizeResu
     intStrategy: options.intStrategy ?? "smallest",
     stringRepr: options.stringStrategy ?? "slice",
     arrayStrategy: options.arrayStrategy ?? "slice",
+    mapType: options.mapType ?? "string-hash-map",
+    fieldNames: options.fieldNames ?? "snake_case",
     unknownStrategy: options.unknownStrategy ?? "std-json-value",
     defaultsFromSamples: options.defaultsFromSamples ?? false,
     observations: options.observations,
@@ -235,6 +251,13 @@ function walkShape(shape: Shape, hint: string, state: NormalizeState, fromArrayE
       switch (state.arrayStrategy) {
         case "arraylist":
           state.needsStd = true;
+          // std.ArrayList is a plain {items, capacity} struct since Zig
+          // 0.15: neither std.json nor serde.zig reads a JSON array into it.
+          state.diagnostics?.warn(
+            "normalize.arraylist_unparseable",
+            `std.ArrayList at ${shape.path} can't be read by std.json or serde.zig (they expect an object); parse into a slice and build the list, or register a serde.zig type override`,
+            { path: shape.path },
+          );
           return { kind: "arraylist", element };
         case "fixed": {
           const o = state.observations?.get(shape.path);
@@ -260,7 +283,7 @@ function walkShape(shape: Shape, hint: string, state: NormalizeState, fromArrayE
     case "map": {
       state.needsStd = true;
       const value = walkShape(shape.value, hint + "Value", state, false);
-      return { kind: "stringMap", value };
+      return { kind: "stringMap", value, repr: state.mapType };
     }
     case "object":
       return walkObject(shape, hint, state, fromArrayElement);
@@ -292,7 +315,7 @@ function walkUnion(
 
   const seenVariantNames = new Set<string>();
   for (const v of shape.variants) {
-    const sanitizedField = sanitizeFieldName(v.tagValue);
+    const sanitizedField = identifierFor(v.tagValue, state);
     let zigName = sanitizedField.text;
     let i = 2;
     while (seenVariantNames.has(zigName)) zigName = `${sanitizedField.text}_${i++}`;
@@ -304,7 +327,7 @@ function walkUnion(
       zigName,
       escaped: sanitizedField.escaped,
       tagValue: v.tagValue,
-      renamed: zigName !== v.tagValue,
+      renamed: isRenamed(zigName, v.tagValue, sanitizedField),
       payload,
       observedCount: v.observedCount,
     });
@@ -328,15 +351,17 @@ function walkEnum(
     name,
     path: shape.path,
     variants: shape.variants.map((v) => {
-      let zigName = v.zigName;
+      const base = state.fieldNames === "wire" ? wireFieldName(v.rawValue) : null;
+      const baseName = base?.text ?? v.zigName;
+      let zigName = baseName;
       let i = 2;
-      while (seen.has(zigName)) zigName = `${v.zigName}_${i++}`;
+      while (seen.has(zigName)) zigName = `${baseName}_${i++}`;
       seen.add(zigName);
       return {
         zigName,
-        escaped: v.escaped,
+        escaped: base?.escaped ?? v.escaped,
         rawValue: v.rawValue,
-        renamed: zigName !== v.rawValue,
+        renamed: base ? zigName !== base.text : zigName !== v.rawValue,
         observedCount: v.observedCount,
       };
     }),
@@ -383,7 +408,7 @@ function buildField(
   // Apply name override before unique-suffixing so the requested name wins
   // collisions deterministically.  Sanitize the override so users can't
   // produce illegal Zig identifiers.
-  let sanitized = sanitizeFieldName(originalKey);
+  let sanitized = identifierFor(originalKey, state);
   if (override?.name && override.name !== "") {
     sanitized = sanitizeFieldName(override.name);
   }
@@ -393,7 +418,7 @@ function buildField(
 
   // Hint for nested struct naming uses the original key, not the sanitized one,
   // so plural-stripping and casing work on the source name.
-  const innerHint = originalKey;
+  const innerHint = identifierSource(originalKey);
   let type: ZigType;
   if (override?.type && override.type !== "") {
     type = { kind: "raw", text: override.type };
@@ -405,7 +430,9 @@ function buildField(
   // optionality.  When override forces non-optional on an inferred-optional
   // field, drop the `?` wrapper and the `null` default — the user has stated
   // the field is always present in their data.
-  const inferredOptional = fieldShape.optional;
+  // serde.zig skips the text of an element that also has attributes or
+  // children, so the text fallback field must be allowed to stay empty.
+  const inferredOptional = fieldShape.optional || fieldShape.xml === "text";
   const wantOptional =
     override?.optional !== undefined ? override.optional : inferredOptional;
 
@@ -444,7 +471,7 @@ function buildField(
     name: finalName,
     escaped: sanitized.escaped,
     originalKey,
-    renamed: finalName !== originalKey,
+    renamed: isRenamed(finalName, originalKey, sanitized),
     type,
     defaultExpr,
     path: fieldShape.path,
@@ -489,4 +516,16 @@ function uniqify(used: ReadonlySet<string>, base: string): string {
   let i = 2;
   while (used.has(`${base}_${i}`)) i++;
   return `${base}_${i}`;
+}
+
+/** Identifier for a field / variant key under the configured naming style. */
+function identifierFor(key: string, state: NormalizeState): SanitizedIdentifier {
+  return state.fieldNames === "wire" ? wireFieldName(key) : sanitizeFieldName(key);
+}
+
+/** Whether the Zig name differs from the wire key.  An `@"…"`-escaped name
+ *  spells the key exactly, so it is never a rename. */
+function isRenamed(zigName: string, key: string, ident: SanitizedIdentifier): boolean {
+  if (ident.escaped && zigName === ident.text) return zigName !== `@"${escapeZigString(key)}"`;
+  return zigName !== key;
 }

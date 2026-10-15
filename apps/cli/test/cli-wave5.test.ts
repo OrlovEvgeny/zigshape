@@ -40,14 +40,13 @@ describe("--unknown", () => {
     expect(r.stdout).toContain("std.json.Value");
   });
 
-  test("serde-value emits serde.Value + serde import", async () => {
+  test("serde-value emits serde.Value through an inline import", async () => {
     const r = await runCli(
       ["--stdin", "--root", "X", "--unknown", "serde-value"],
       '[null, null]',
     );
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("serde.Value");
-    expect(r.stdout).toContain('@import("serde")');
+    expect(r.stdout).toContain('@import("serde").Value');
     expect(r.stdout).not.toContain("std.json.Value");
   });
 

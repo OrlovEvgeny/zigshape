@@ -62,7 +62,7 @@ describe("serdeDecorator + aliases", () => {
       ['{"userId": 1, "firstName": "A"}'],
       { denyUnknownFields: true },
     );
-    expect(code).toContain("rename_all = serde.NamingConvention.camel_case");
+    expect(code).toContain("rename_all = .camel_case");
     expect(code).toContain(".deny_unknown_fields = true");
   });
 
@@ -71,7 +71,7 @@ describe("serdeDecorator + aliases", () => {
       '{"userId": 1, "primaryUrl": "x"}',
       '{"userId": 2, "secondaryUrl": "y"}',
     ]);
-    expect(code).toContain("rename_all = serde.NamingConvention.camel_case");
+    expect(code).toContain("rename_all = .camel_case");
     expect(code).toContain(".alias = .{");
   });
 });

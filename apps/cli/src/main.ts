@@ -13,6 +13,7 @@ import {
   type AliasStrategy,
   type ArrayStrategy,
   type EnumStrategy,
+  type FieldNames,
   type Format,
   type GenerateOptions,
   type IntStrategy,
@@ -24,7 +25,7 @@ import {
   type UnknownStrategy,
   type ZigshapeOptions,
 } from "@zigshape/core";
-import { serdeDecorator, type RenameAllStrategy } from "@zigshape/serde-zig";
+import { serdeCompatWarnings, serdeDecorator, type RenameAllStrategy } from "@zigshape/serde-zig";
 import { loadConfig } from "./config";
 
 type Target = "plain" | "serde-zig";
@@ -40,6 +41,7 @@ type Args = {
   mapStrategy: MapStrategy;
   arrayStrategy: ArrayStrategy;
   unknownStrategy: UnknownStrategy;
+  fieldNames: FieldNames;
   enums: EnumStrategy;
   unions: UnionStrategy;
   aliases: AliasStrategy;
@@ -117,8 +119,15 @@ Inference options:
                                  the infer.fixed_length_unstable warning.
   --unknown CONV                 Strategy for shapes inference can't pin down
                                  (only-null / heterogeneous mixed scalars).
-                                 CONV is std-json-value (default),
-                                 serde-value, string, or compile-error.
+                                 CONV is std-json-value (default for
+                                 --target plain), serde-value (default for
+                                 --target serde-zig), string, or
+                                 compile-error.
+  --field-names snake_case|wire  Field identifiers. snake_case converts keys
+                                 and relies on serde rename; wire keeps the
+                                 keys (std.json matches names literally).
+                                 Default: wire for --target plain,
+                                 snake_case for --target serde-zig.
   --rename-all CONV              Force a serde naming convention instead of
                                  the auto-detect heuristic. CONV is one of
                                  auto (default), none, snake_case,
@@ -129,7 +138,9 @@ Inference options:
                                  Tagged-union inference + serde tagging
                                  style. Default: off. 'tagged' is accepted
                                  as a back-compat alias for 'internal'.
-  --aliases auto|off             Cross-sample alias detection. Default: auto.
+  --aliases auto|off             Cross-sample alias detection (serde.zig
+                                 alias). Default: auto for serde-zig, off
+                                 for plain.
   --deny-unknown-fields          Emit serde .deny_unknown_fields = true.
   --defaults-from-samples        Emit observed scalar values as Zig defaults.
 
@@ -152,6 +163,7 @@ function parseArgs(argv: readonly string[]): Args {
     mapStrategy: "auto",
     arrayStrategy: "slice",
     unknownStrategy: "std-json-value",
+    fieldNames: "snake_case",
     enums: "auto",
     unions: "off",
     aliases: "auto",
@@ -259,6 +271,15 @@ function parseArgs(argv: readonly string[]): Args {
         }
         args.unknownStrategy = v;
         args.explicit.add("unknownStrategy");
+        break;
+      }
+      case "--field-names": {
+        const v = next() as FieldNames | undefined;
+        if (v !== "snake_case" && v !== "wire") {
+          throw new Error(`--field-names must be snake_case|wire (got '${v}')`);
+        }
+        args.fieldNames = v;
+        args.explicit.add("fieldNames");
         break;
       }
       case "--rename-all": {
@@ -462,6 +483,8 @@ export async function run(
         }
         if (cfg.options.aliases !== undefined && !args.explicit.has("aliases")) {
           args.aliases = cfg.options.aliases;
+          // A config choice counts as explicit for the target-based default.
+          args.explicit.add("aliases");
         }
         if (cfg.options.format !== undefined && !args.explicit.has("format")) {
           args.format = cfg.options.format;
@@ -562,16 +585,24 @@ export async function run(
     }
   }
 
+  const serde = args.target === "serde-zig";
   const inferOptions: Partial<ZigshapeOptions> = {
     format: args.format,
     intStrategy: args.intStrategy,
     strings: args.stringStrategy,
     maps: args.mapStrategy,
     arrays: args.arrayStrategy,
-    unknown: args.unknownStrategy,
+    // Defaults that follow the target.  serde.zig can't read std.json.Value;
+    // std.json can't read std.StringHashMap and has neither rename nor
+    // alias, so its field names must be the wire keys.
+    unknown: args.explicit.has("unknownStrategy")
+      ? args.unknownStrategy
+      : serde ? "serde-value" : "std-json-value",
+    mapType: serde ? "string-hash-map" : "json-array-hash-map",
+    fieldNames: args.explicit.has("fieldNames") ? args.fieldNames : serde ? "snake_case" : "wire",
     enums: args.enums,
     unions: args.unions,
-    aliases: args.aliases,
+    aliases: args.explicit.has("aliases") ? args.aliases : serde ? args.aliases : "off",
     treatRootArrayAsSamples: args.samplesFromArray,
     defaultsFromSamples: args.defaultsFromSamples,
   };
@@ -583,6 +614,7 @@ export async function run(
     overrides,
   });
 
+  if (normalized && args.target === "serde-zig") warnings.push(...serdeCompatWarnings(normalized));
   for (const w of warnings) {
     const path = w.path ? ` ${w.path}` : "";
     process.stderr.write(`${severityPrefix(w.severity)}:${path} ${w.message} [${w.code}]\n`);
@@ -660,12 +692,13 @@ export async function run(
       (args.withTests && (args.target === "serde-zig" || stdParseable));
     const snippetUsesSerde =
       args.target === "serde-zig" && (args.withParser || args.withTests);
-    if (snippetUsesStd && !code.includes('@import("std")')) {
-      code = 'const std = @import("std");\n' + code;
-    }
-    if (snippetUsesSerde && !code.includes('@import("serde")')) {
-      code = 'const serde = @import("serde");\n' + code;
-    }
+    // Imports go above the existing ones; a blank line separates them from
+    // the first declaration when the file had no imports yet.
+    const prependImport = (line: string) => {
+      code = line + "\n" + (code.startsWith("const ") ? "" : "\n") + code;
+    };
+    if (snippetUsesSerde && !code.includes('@import("serde")')) prependImport('const serde = @import("serde");');
+    if (snippetUsesStd && !code.includes('@import("std")')) prependImport('const std = @import("std");');
     if (args.withParser) {
       code += emitParserHelper(args.rootName, args.target, fmt);
     }

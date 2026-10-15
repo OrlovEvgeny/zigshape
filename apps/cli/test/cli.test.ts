@@ -30,7 +30,7 @@ describe("cli", () => {
     );
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('const serde = @import("serde");');
-    expect(r.stdout).toContain("rename_all = serde.NamingConvention.camel_case");
+    expect(r.stdout).toContain("rename_all = .camel_case");
   });
 
   test("file input", async () => {
@@ -144,7 +144,7 @@ describe("cli", () => {
     );
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("union(enum)");
-    expect(r.stdout).toContain("tag = serde.UnionTag.internal");
+    expect(r.stdout).toContain("tag = .internal");
     expect(r.stdout).toContain('tag_field = "type"');
   });
 
@@ -232,7 +232,8 @@ describe("cli", () => {
     );
     expect(r.code).toBe(0);
     expect(r.stderr).toContain("xml_mixed_content");
-    expect(r.stdout).toContain("value: []const u8");
+    // serde.zig skips such text, so the fallback field may stay empty.
+    expect(r.stdout).toContain("value: ?[]const u8 = null");
   });
 
   test("XML namespace warning fires", async () => {

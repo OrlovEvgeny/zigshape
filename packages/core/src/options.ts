@@ -16,6 +16,17 @@ export type UnionStrategy =
 export type AliasStrategy = "auto" | "off";
 export type StringStrategy = "slice" | "mut" | "sentinel";
 export type MapStrategy = "auto" | "struct" | "hash-map";
+/** How struct field and enum variant identifiers are derived from keys.
+ *  `snake_case` converts to idiomatic Zig names and relies on serde.zig's
+ *  `rename` / `rename_all` to map them back to the wire.  `wire` keeps the
+ *  key itself (`@"…"`-escaped when needed), which std.json requires since
+ *  it matches field names literally. */
+export type FieldNames = "snake_case" | "wire";
+/** Zig type emitted for detected maps.  `string-hash-map` is
+ *  `std.StringHashMap(V)`, which serde.zig reads natively.  std.json can't
+ *  parse that (it holds an allocator), so std.json users want
+ *  `json-array-hash-map`: `std.json.ArrayHashMap(V)`. */
+export type MapType = "string-hash-map" | "json-array-hash-map";
 /** Array codegen strategy.  `slice` (default) emits `[]const T`.  `arraylist`
  *  emits `std.ArrayList(T)` for owned/builder patterns.  `fixed` emits `[N]T`
  *  when every observation of the array has length N; otherwise falls back to
@@ -51,6 +62,10 @@ export type ZigshapeOptions = {
    *  emit std.StringHashMap; "hash-map" → always when fields are homogeneous,
    *  ignoring key shape (still requires homogeneous values). */
   maps: MapStrategy;
+  /** Zig type for detected maps.  See `MapType`. */
+  mapType: MapType;
+  /** Field / variant identifier style.  See `FieldNames`. */
+  fieldNames: FieldNames;
   /** Array codegen strategy.  See `ArrayStrategy`. */
   arrays: ArrayStrategy;
   /** What to emit when inference can't pick a concrete type (only-null,
@@ -77,6 +92,8 @@ export const DEFAULT_OPTIONS: ZigshapeOptions = {
   denyUnknownFields: false,
   strings: "slice",
   maps: "auto",
+  mapType: "string-hash-map",
+  fieldNames: "snake_case",
   arrays: "slice",
   unknown: "std-json-value",
   treatRootArrayAsSamples: false,

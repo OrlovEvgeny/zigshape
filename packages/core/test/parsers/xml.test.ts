@@ -48,14 +48,31 @@ describe("parseXml", () => {
     expect(codes).toContain("parse.xml_mixed_content");
   });
 
-  test("namespace prefix stripped with warning", () => {
+  test("namespace prefix kept as the wire name, xmlns ignored", () => {
     const r = parseXml(
       '<root xmlns:ns="http://x"><ns:name>Alice</ns:name></root>',
       0,
     );
     const v = r.value as ZObject;
-    expect(v.fields.has("name")).toBe(true);
-    expect(r.diagnostics.toArray().some((d) => d.code === "parse.xml_namespace")).toBe(true);
+    expect(v.fields.has("ns:name")).toBe(true);
+    expect([...v.fields.keys()].some((k) => k.startsWith("xmlns"))).toBe(false);
+    const d = r.diagnostics.toArray().find((x) => x.code === "parse.xml_namespace");
+    expect(d?.severity).toBe("info");
+  });
+
+  test("scalars are typed only when the text round-trips", () => {
+    const r = parseXml(
+      '<v version="2.0"><n>42</n><zip>02134</zip><neg>-7</neg><on>true</on><e>1e3</e><s>12 Main St</s></v>',
+      0,
+    );
+    const f = (r.value as ZObject).fields;
+    expect(f.get("version")!.value).toMatchObject({ kind: "float", value: 2 });
+    expect(f.get("n")!.value).toMatchObject({ kind: "int", value: 42n });
+    expect(f.get("zip")!.value).toMatchObject({ kind: "string", value: "02134" });
+    expect(f.get("neg")!.value).toMatchObject({ kind: "int", value: -7n });
+    expect(f.get("on")!.value).toMatchObject({ kind: "bool", value: true });
+    expect(f.get("e")!.value).toMatchObject({ kind: "float", value: 1000 });
+    expect(f.get("s")!.value).toMatchObject({ kind: "string" });
   });
 
   test("CDATA becomes string content", () => {

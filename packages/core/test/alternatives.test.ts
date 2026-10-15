@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { suggestAlternatives, type ZigType } from "../src/zig/types";
+import { SERDE_VALUE, suggestAlternatives, type ZigType } from "../src/zig/types";
 
 function alts(t: ZigType): string[] {
   return suggestAlternatives(t);
@@ -10,7 +10,7 @@ describe("suggestAlternatives", () => {
     const a = alts({ kind: "string", repr: "slice" });
     expect(a).toContain("[]u8");
     expect(a).toContain("[:0]const u8");
-    expect(a).toContain("serde.Value");
+    expect(a).toContain(SERDE_VALUE);
     // Current rendering filtered out.
     expect(a).not.toContain("[]const u8");
   });
@@ -29,7 +29,7 @@ describe("suggestAlternatives", () => {
     const a = alts({ kind: "f64" });
     expect(a).toContain("f32");
     expect(a).toContain("[]const u8");
-    expect(a).toContain("serde.Value");
+    expect(a).toContain(SERDE_VALUE);
   });
 
   test("slice T -> ArrayList + mut slice", () => {
@@ -40,7 +40,7 @@ describe("suggestAlternatives", () => {
 
   test("json (unknown) -> serde / string / compileError", () => {
     const a = alts({ kind: "json" });
-    expect(a).toContain("serde.Value");
+    expect(a).toContain(SERDE_VALUE);
     expect(a).toContain("[]const u8");
     expect(a.some((s) => s.includes("@compileError"))).toBe(true);
   });

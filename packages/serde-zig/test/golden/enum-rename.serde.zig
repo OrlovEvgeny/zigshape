@@ -10,6 +10,6 @@ pub const State = enum {
     on_hold,
 
     pub const serde = .{
-        .rename_all = serde.NamingConvention.kebab_case,
+        .rename_all = .kebab_case,
     };
 };

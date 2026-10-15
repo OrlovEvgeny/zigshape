@@ -5,7 +5,7 @@ pub const User = struct {
     user_profile: UserProfile,
 
     pub const serde = .{
-        .rename_all = serde.NamingConvention.camel_case,
+        .rename_all = .camel_case,
     };
 };
 
@@ -14,6 +14,6 @@ pub const UserProfile = struct {
     joined_at: []const u8,
 
     pub const serde = .{
-        .rename_all = serde.NamingConvention.camel_case,
+        .rename_all = .camel_case,
     };
 };

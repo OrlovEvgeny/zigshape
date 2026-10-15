@@ -66,8 +66,8 @@ describe("cli serde flatten / skip via config", () => {
       cfg,
     ]);
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain(".flatten = .{ .profile },");
-    expect(r.stdout).toContain(".skip = .{ .email },");
+    expect(r.stdout).toContain('.flatten = &[_][]const u8{ "profile" },');
+    expect(r.stdout).toContain(".email = .always,");
   });
 });
 

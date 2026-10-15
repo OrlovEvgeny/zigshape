@@ -1,7 +1,6 @@
 <script lang="ts">
-  // Site chrome (header, footer, global styles) lives once here so every
-  // prerendered page shares it.  The static SoftwareApplication JSON-LD
-  // flushes during prerender; no runtime cost.
+  // Site chrome (header, footer, global styles) shared by every page.  Per
+  // page <head> content (title, canonical, JSON-LD) comes from Seo.svelte.
   import "@fontsource/ibm-plex-sans/latin-400.css";
   import "@fontsource/ibm-plex-sans/latin-500.css";
   import "@fontsource/ibm-plex-sans/latin-600.css";
@@ -10,29 +9,21 @@
   import "../app.css";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import { PAGE_BY_SLUG, PAGES } from "$lib/pages";
+  import { SERDE_URL } from "$lib/seo";
 
   let { children } = $props();
 
-  const ld = JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    name: "zigshape",
-    applicationCategory: "DeveloperApplication",
-    operatingSystem: "Any",
-    description:
-      "Generate idiomatic Zig structs from JSON, YAML, TOML, and XML, with first-class serde.zig support.",
-    url: "https://zigshape.dev/",
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-  });
-
-  const FORMATS = [
-    { label: "JSON", plain: "/json-to-zig-struct", serde: "/json-to-serde-zig" },
-    { label: "YAML", plain: "/yaml-to-zig-struct", serde: "/yaml-to-serde-zig" },
-    { label: "TOML", plain: "/toml-to-zig-struct", serde: "/toml-to-serde-zig" },
-    { label: "XML", plain: "/xml-to-zig-struct", serde: "/xml-to-serde-zig" },
-  ];
-
-  const SERDE_URL = "https://github.com/OrlovEvgeny/serde.zig";
+  // Header links: one landing page per input format.
+  const NAV = [
+    "json-to-zig-struct",
+    "yaml-to-zig-struct",
+    "toml-to-zig-struct",
+    "xml-to-zig-struct",
+    "csv-to-zig-struct",
+    "zon-to-zig-struct",
+    "toon-to-zig-struct",
+  ].map((slug) => PAGE_BY_SLUG.get(slug)!);
 
   const path = $derived($page.url.pathname);
 
@@ -58,10 +49,6 @@
   });
 </script>
 
-<svelte:head>
-  {@html `<script type="application/ld+json">${ld}</script>`}
-</svelte:head>
-
 <div class="shell">
   <header class="site-header">
     <div class="page bar">
@@ -70,8 +57,8 @@
         <span>zigshape</span>
       </a>
       <nav class="formats" aria-label="Formats">
-        {#each FORMATS as f (f.label)}
-          <a href={f.plain} aria-current={path === f.plain || path === f.serde ? "page" : undefined}>{f.label}</a>
+        {#each NAV as p (p.slug)}
+          <a href="/{p.slug}" aria-current={path.startsWith(`/${p.format}-to-`) ? "page" : undefined}>{p.format.toUpperCase()}</a>
         {/each}
       </nav>
       <span class="spacer"></span>
@@ -94,14 +81,7 @@
         Runs entirely in your browser. Input never leaves this page.
       </p>
       <nav aria-label="Converters">
-        <span class="group">
-          <span class="label">Zig struct</span>
-          {#each FORMATS as f (f.label)}<a href={f.plain}>{f.label}</a>{/each}
-        </span>
-        <span class="group">
-          <span class="label">serde.zig</span>
-          {#each FORMATS as f (f.label)}<a href={f.serde}>{f.label}</a>{/each}
-        </span>
+        {#each PAGES as p (p.slug)}<a href="/{p.slug}">{p.name}</a>{/each}
       </nav>
     </div>
   </footer>
@@ -209,15 +189,8 @@
   .site-footer nav {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 28px;
-  }
-  .group {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 10px;
-  }
-  .group .label {
-    font-size: 10.5px;
+    gap: 6px 16px;
+    max-width: 720px;
   }
   .site-footer a {
     color: var(--text-2);

@@ -21,7 +21,7 @@
       The same JSON-to-Zig pipeline, but the output carries a <code>pub const serde = .&lbrace; ... &rbrace;</code>
       block so <a href="https://github.com/OrlovEvgeny/serde.zig">serde.zig</a> can deserialize it directly:
       auto-detected <code>rename_all</code>, alias collapsing for sibling fields that never co-occur, and an
-      optional <code>deny_unknown_fields</code> pass via the toolbar's advanced options.
+      optional <code>deny_unknown_fields</code> pass from the <em>Options</em> panel.
     </p>
   </header>
 

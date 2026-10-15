@@ -67,4 +67,24 @@ describe("share encoding", () => {
     expect(decoded?.rootName).toBe("User");
     expect(decoded?.samples).toBeUndefined();
   });
+
+  test("option edits round-trip and unknown or invalid ones are dropped", () => {
+    const hash = encodeShareConfig({
+      ...baseConfig,
+      options: { intStrategy: "u64", denyUnknownFields: true },
+    });
+    expect(decodeShareHash(hash)?.options).toEqual({ intStrategy: "u64", denyUnknownFields: true });
+
+    const json = JSON.stringify({
+      ...baseConfig,
+      options: { intStrategy: "u128", denyUnknownFields: "yes", bogus: 1, arrays: "fixed" },
+    });
+    const fake = "#c=" + btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    expect(decodeShareHash(fake)?.options).toEqual({ arrays: "fixed" });
+  });
+
+  test("empty option edits are omitted", () => {
+    const hash = encodeShareConfig({ ...baseConfig, options: {} });
+    expect(decodeShareHash(hash)).toEqual({ ...baseConfig });
+  });
 });

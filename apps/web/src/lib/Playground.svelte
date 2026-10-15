@@ -4,12 +4,21 @@
   import Editor, { type EditorLanguage, type HighlightRange } from "$lib/Editor.svelte";
   import Inspector from "$lib/Inspector.svelte";
   import Menu from "$lib/Menu.svelte";
+  import OptionsPanel from "$lib/OptionsPanel.svelte";
   import SampleSource, { readFiles } from "$lib/SampleSource.svelte";
   import SampleTabs from "$lib/SampleTabs.svelte";
   import Toolbar from "$lib/Toolbar.svelte";
   import Warnings from "$lib/Warnings.svelte";
   import { tryParseCurl } from "$lib/curl";
   import { EXAMPLES, type Example } from "$lib/examples";
+  import {
+    applyEdit,
+    cliCommand,
+    presetOptions,
+    type OptionEdits,
+    type OptionKey,
+    type WebOptions,
+  } from "$lib/options";
   import { DEFAULT_PRESET, PRESETS, type PresetId } from "$lib/presets";
   import {
     decodeShareHash,
@@ -80,7 +89,9 @@
   let target = $state<"plain" | "serde-zig">(init.initialTarget ?? startExample.target);
   let format = $state<FormatArg>(init.initialFormat ?? "auto");
   let presetId = $state<PresetId>(init.initialPreset ?? DEFAULT_PRESET);
-  let withDocComments = $state(false);
+  // Knobs moved away from the preset in the Options panel.
+  let optionEdits = $state<OptionEdits>({});
+  let optionsOpen = $state(false);
   // Set once the WASM zig fmt module has loaded; formatting itself is
   // synchronous after that.
   let zigFmt = $state.raw<((input: string) => string) | null>(null);
@@ -110,9 +121,9 @@
     return "plain";
   });
 
-  const presetOptions = $derived(
-    PRESETS.find((p) => p.id === presetId)?.options ?? {},
-  );
+  const basePreset = $derived(presetOptions(presetId));
+  const options = $derived<WebOptions>({ ...basePreset, ...optionEdits });
+  const editCount = $derived(Object.keys(optionEdits).length);
 
   // Auto-suggest a root name from the active sample's structure.  Runs
   // against the parser (not the inference output) so it works even when
@@ -124,7 +135,7 @@
     if (!r.value) return null;
     return suggestRootName(r.value, {
       xmlRoot: r.xmlRoot,
-      treatRootArrayAsSamples: presetOptions.treatRootArrayAsSamples,
+      treatRootArrayAsSamples: options.treatRootArrayAsSamples,
     });
   });
   $effect(() => {
@@ -151,10 +162,11 @@
         resolvedFormat: null as Format | null,
       };
     }
+    const { renameAll, denyUnknownFields, withDocComments, ...inferOptions } = options;
     const result = runPipeline({
       samples: nonEmpty,
       rootName: effectiveRoot,
-      inferOptions: { ...presetOptions, format },
+      inferOptions: { ...inferOptions, format },
       overrides,
     });
     const { normalized, resolvedFormat } = result;
@@ -170,7 +182,8 @@
         resolvedFormat,
       };
     }
-    const baseOpts = target === "serde-zig" ? serdeDecorator(normalized) : {};
+    const baseOpts =
+      target === "serde-zig" ? serdeDecorator(normalized, { renameAll, denyUnknownFields }) : {};
     const opts = { ...baseOpts, withDocComments };
     const code = generateZig(normalized, opts);
     return { code, warnings, decls: normalized.decls, normalized, resolvedFormat };
@@ -275,6 +288,12 @@
   }
 
   function clearAllOverrides() { overrides = {}; }
+
+  function setOption(key: OptionKey, value: WebOptions[OptionKey]) {
+    optionEdits = applyEdit(optionEdits, basePreset, key, value);
+  }
+
+  const cli = $derived(cliCommand(options, { format, target, rootName: effectiveRoot }));
 
   function addSample() {
     samples = [...samples, ""];
@@ -409,8 +428,12 @@
     );
   }
 
+  function sharedOptions(): { options?: OptionEdits } {
+    return editCount > 0 ? { options: { ...optionEdits } } : {};
+  }
+
   async function shareConfig() {
-    const hash = encodeShareConfig({ rootName, target, format, presetId });
+    const hash = encodeShareConfig({ rootName, target, format, presetId, ...sharedOptions() });
     const url = window.location.origin + window.location.pathname + hash;
     replaceState(hash, {});
     const ok = await copyWithFallback(url);
@@ -419,7 +442,7 @@
 
   async function shareWithSamples() {
     try {
-      const hash = encodeShareWithSamples({ rootName, target, format, presetId, samples });
+      const hash = encodeShareWithSamples({ rootName, target, format, presetId, ...sharedOptions(), samples });
       const url = window.location.origin + window.location.pathname + hash;
       replaceState(hash, {});
       const ok = await copyWithFallback(url);
@@ -446,6 +469,8 @@
     target = decoded.target;
     format = decoded.format;
     if (PRESETS.some((p) => p.id === decoded.presetId)) presetId = decoded.presetId;
+    optionEdits = decoded.options ?? {};
+    if (editCount > 0) optionsOpen = true;
     if (decoded.samples && decoded.samples.length > 0) {
       samples = [...decoded.samples];
       activeIndex = 0;
@@ -518,7 +543,9 @@
     bind:target
     bind:format
     bind:presetId
-    bind:withDocComments
+    bind:optionsOpen
+    {editCount}
+    onPresetChange={() => (optionEdits = {})}
     {detectedFormat}
     {detectedConfidence}
     onLoadExample={loadExample}
@@ -528,6 +555,19 @@
     {suggestedRoot}
     rootAuto={!rootNamePinned}
   />
+
+  {#if optionsOpen}
+    <OptionsPanel
+      {options}
+      edits={optionEdits}
+      presetLabel={PRESETS.find((p) => p.id === presetId)?.label ?? presetId}
+      {target}
+      {cli}
+      onChange={setOption}
+      onReset={() => (optionEdits = {})}
+      onCopyCli={() => copySnippet(cli, "CLI command")}
+    />
+  {/if}
 
   <div class="workspace">
     <section

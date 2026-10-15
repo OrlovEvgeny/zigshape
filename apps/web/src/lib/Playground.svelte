@@ -106,7 +106,7 @@
   const editorLanguage: EditorLanguage = $derived.by(() => {
     const f = format === "auto" ? detectedFormat : format;
     if (f === "json" || f === "ndjson") return "json";
-    if (f === "yaml" || f === "xml") return f;
+    if (f === "yaml" || f === "xml" || f === "toml") return f;
     return "plain";
   });
 

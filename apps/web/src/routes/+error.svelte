@@ -1,10 +1,14 @@
 <script lang="ts">
   import { page } from "$app/stores";
+  import Seo from "$lib/Seo.svelte";
 </script>
 
-<svelte:head>
-  <title>{$page.status} — zigshape</title>
-</svelte:head>
+<Seo
+  title="{$page.status === 404 ? 'Page not found' : 'Error'} · zigshape"
+  description="This page doesn't exist on zigshape."
+  path={$page.url.pathname}
+  noindex
+/>
 
 <main class="page">
   <header class="intro">

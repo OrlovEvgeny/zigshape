@@ -13,7 +13,8 @@ export function parseJson(input: string, sampleIndex: number): ParseResult {
   });
 
   for (const e of errors) {
-    diagnostics.error("parse." + printParseErrorCode(e.error), printParseErrorCode(e.error), {
+    const code = printParseErrorCode(e.error);
+    diagnostics.error("parse." + code, describeParseError(code), {
       src: { sample: sampleIndex, offset: e.offset, length: e.length },
     });
   }
@@ -22,6 +23,30 @@ export function parseJson(input: string, sampleIndex: number): ParseResult {
 
   const value = nodeToZValue(tree, input, sampleIndex, diagnostics);
   return { value, diagnostics };
+}
+
+// jsonc-parser reports bare enum names (`CloseBraceExpected`); turn them
+// into a sentence a person can act on.
+function describeParseError(code: string): string {
+  switch (code) {
+    case "CloseBraceExpected": return "Expected '}'";
+    case "CloseBracketExpected": return "Expected ']'";
+    case "ColonExpected": return "Expected ':' after property name";
+    case "CommaExpected": return "Expected ','";
+    case "PropertyNameExpected": return "Expected a property name";
+    case "ValueExpected": return "Expected a value";
+    case "EndOfFileExpected": return "Unexpected content after the end of the document";
+    case "InvalidSymbol": return "Invalid symbol";
+    case "InvalidNumberFormat": return "Invalid number";
+    case "UnexpectedEndOfString": return "Unterminated string";
+    case "UnexpectedEndOfComment": return "Unterminated comment";
+    case "UnexpectedEndOfNumber": return "Unterminated number";
+    case "InvalidUnicode": return "Invalid unicode escape";
+    case "InvalidEscapeCharacter": return "Invalid escape character";
+    case "InvalidCharacter": return "Invalid character";
+    case "InvalidCommentToken": return "Invalid comment";
+    default: return code;
+  }
 }
 
 function nodeToZValue(node: Node, input: string, sample: number, diag: DiagnosticBag): ZValue | null {

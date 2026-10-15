@@ -2,6 +2,9 @@ import type { Format } from "../parsers/types";
 
 export type SnippetTarget = "plain" | "serde-zig";
 
+/** serde.zig release the snippets are written against. */
+export const SERDE_ZIG_VERSION = "1.2.3";
+
 /** Module name that lives under `serde.<module>` in serde.zig per format. */
 const SERDE_MODULE: Record<Format, string> = {
   json: "json",
@@ -11,22 +14,33 @@ const SERDE_MODULE: Record<Format, string> = {
   xml: "xml",
 };
 
-/** A `pub fn parse<Root>(allocator, input) !T { ... }` helper.  For the plain
- *  target the helper wraps `std.json.parseFromSlice` (NDJSON falls back to
- *  JSON because std doesn't ship a stream parser).  YAML/TOML/XML aren't in
- *  std, so the plain target emits a TODO comment instead.  The serde target
- *  always has a matching `serde.<format>.fromSlice`. */
+/** Formats where every top-level record is one sample of `rootName`: the
+ *  helper parses one line at a time. */
+function isLineFormat(format: Format): boolean {
+  return format === "ndjson";
+}
+
+/** A `pub fn parse<Root>(allocator, input)` helper.  The serde target uses
+ *  `serde.<format>.fromSliceManaged`, whose `serde.Parsed(T)` owns an arena
+ *  the caller releases with one `deinit`.  The plain target wraps
+ *  `std.json.parseFromSlice`; YAML/TOML/XML aren't in std, so it emits a
+ *  pointer to the serde target instead. */
 export function emitParserHelper(
   rootName: string,
   target: SnippetTarget,
   format: Format,
 ): string {
+  const line = isLineFormat(format);
+  const arg = line ? "line" : "input";
   if (target === "plain") {
     if (format === "json" || format === "ndjson") {
       return [
         "",
-        `pub fn parse${rootName}(allocator: std.mem.Allocator, input: []const u8) !std.json.Parsed(${rootName}) {`,
-        `    return std.json.parseFromSlice(${rootName}, allocator, input, .{});`,
+        line
+          ? `/// Parses one NDJSON line. Call \`deinit\` on the result to free it.`
+          : `/// Call \`deinit\` on the result to free it.`,
+        `pub fn parse${rootName}(allocator: std.mem.Allocator, ${arg}: []const u8) !std.json.Parsed(${rootName}) {`,
+        `    return std.json.parseFromSlice(${rootName}, allocator, ${arg}, .{});`,
         "}",
         "",
       ].join("\n");
@@ -39,18 +53,26 @@ export function emitParserHelper(
     ].join("\n");
   }
   const mod = SERDE_MODULE[format];
+  const doc = line
+    ? [
+        `/// Parses one NDJSON line. Call \`deinit\` on the result to free it.`,
+        `/// For a stream, use serde.helpers.StreamingDeserializer(${rootName}).`,
+      ]
+    : [`/// Call \`deinit\` on the result to free everything it allocated.`];
   return [
     "",
-    `pub fn parse${rootName}(allocator: std.mem.Allocator, input: []const u8) !${rootName} {`,
-    `    return serde.${mod}.fromSlice(${rootName}, allocator, input);`,
+    ...doc,
+    `pub fn parse${rootName}(allocator: std.mem.Allocator, ${arg}: []const u8) !serde.Parsed(${rootName}) {`,
+    `    return serde.${mod}.fromSliceManaged(${rootName}, allocator, ${arg});`,
     "}",
     "",
   ].join("\n");
 }
 
-/** A minimal round-trip test using the first sample as input.  The sample is
+/** A minimal parse test using the first sample as input.  The sample is
  *  embedded inside a Zig multi-line raw string so any quoting in the wire
- *  format is preserved verbatim (no escaping required).  No assertions about
+ *  format is preserved verbatim (no escaping required).  It parses with
+ *  `std.testing.allocator`, so a leak fails the test.  No assertions about
  *  field values — generated tests are scaffolds, not contracts. */
 export function emitTestScaffold(
   rootName: string,
@@ -61,35 +83,35 @@ export function emitTestScaffold(
   const lines: string[] = [];
   lines.push("");
   lines.push(`test "parse ${rootName}" {`);
-  lines.push("    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);");
-  lines.push("    defer arena.deinit();");
   lines.push("    const input =");
   for (const l of sample.split("\n")) {
     lines.push(`        \\\\${l}`);
   }
   lines.push("    ;");
+
+  let call: string | null = null;
   if (target === "plain") {
     if (format === "json" || format === "ndjson") {
-      lines.push("    const parsed = try std.json.parseFromSlice(");
-      lines.push(`        ${rootName},`);
-      lines.push("        arena.allocator(),");
-      lines.push("        input,");
-      lines.push("        .{},");
-      lines.push("    );");
-      lines.push("    defer parsed.deinit();");
-      lines.push("    _ = parsed.value;");
-    } else {
-      lines.push(`    // std doesn't ship a ${format.toUpperCase()} parser; supply your own here.`);
-      lines.push("    _ = input;");
+      call = `std.json.parseFromSlice(${rootName}, std.testing.allocator, INPUT, .{})`;
     }
   } else {
-    const mod = SERDE_MODULE[format];
-    lines.push(`    const parsed = try serde.${mod}.fromSlice(`);
-    lines.push(`        ${rootName},`);
-    lines.push("        arena.allocator(),");
-    lines.push("        input,");
-    lines.push("    );");
-    lines.push("    _ = parsed;");
+    call = `serde.${SERDE_MODULE[format]}.fromSliceManaged(${rootName}, std.testing.allocator, INPUT)`;
+  }
+
+  if (call === null) {
+    lines.push(`    // std doesn't ship a ${format.toUpperCase()} parser; supply your own here.`);
+    lines.push("    _ = input;");
+  } else if (isLineFormat(format)) {
+    lines.push("    var it = std.mem.splitScalar(u8, input, '\\n');");
+    lines.push("    while (it.next()) |line| {");
+    lines.push("        if (std.mem.trim(u8, line, \" \\t\\r\").len == 0) continue;");
+    lines.push(`        var parsed = try ${call.replace("INPUT", "line")};`);
+    lines.push("        defer parsed.deinit();");
+    lines.push("    }");
+  } else {
+    const binding = target === "plain" ? "const" : "var";
+    lines.push(`    ${binding} parsed = try ${call.replace("INPUT", "input")};`);
+    lines.push("    defer parsed.deinit();");
   }
   lines.push("}");
   lines.push("");
@@ -98,8 +120,8 @@ export function emitTestScaffold(
 
 /** A Zig comment block describing what the generated struct expects from
  *  `build.zig`.  For the plain target there's nothing to wire (std comes
- *  for free); for serde-zig we point at the package and module-import
- *  pattern that ships in serde.zig's README. */
+ *  for free); for serde-zig it's the fetch command and module import from
+ *  serde.zig's README. */
 export function emitBuildSnippet(target: SnippetTarget): string {
   if (target === "plain") {
     return [
@@ -110,17 +132,16 @@ export function emitBuildSnippet(target: SnippetTarget): string {
   }
   return [
     "",
-    "// build.zig — wire serde.zig as a dependency:",
+    "// Add serde.zig to build.zig.zon:",
     "//",
-    "//   const serde = b.dependency(\"serde\", .{",
-    "//       .target = target,",
-    "//       .optimize = optimize,",
-    "//   });",
-    "//   exe.root_module.addImport(\"serde\", serde.module(\"serde\"));",
+    `//   zig fetch --save https://github.com/OrlovEvgeny/serde.zig/archive/refs/tags/v${SERDE_ZIG_VERSION}.tar.gz`,
     "//",
-    "// build.zig.zon — add to .dependencies:",
+    "// Then import the module in build.zig:",
     "//",
-    "//   .serde = .{ .url = \"…\", .hash = \"…\" },",
+    "//   const serde_dep = b.dependency(\"serde\", .{ .target = target, .optimize = optimize });",
+    "//   exe.root_module.addImport(\"serde\", serde_dep.module(\"serde\"));",
+    "//",
+    "// serde.zig supports Zig 0.15.2, 0.16.0 and 0.17.0.",
     "",
   ].join("\n");
 }

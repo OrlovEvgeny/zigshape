@@ -76,8 +76,10 @@
   let format = $state<FormatArg>(initialFormat);
   let presetId = $state<PresetId>(initialPreset);
   let withDocComments = $state(false);
-  let formattedCode = $state<string | null>(null);
-  let formatterError = $state<string | null>(null);
+  // Set once the WASM zig fmt module has loaded; formatting itself is
+  // synchronous after that.
+  let zigFmt = $state.raw<((input: string) => string) | null>(null);
+  let zigFmtLoadError = $state<string | null>(null);
   let inputHighlight = $state<HighlightRange | null>(null);
   let shareNotice = $state<string | null>(null);
   let overrides = $state<Overrides>({});
@@ -147,7 +149,20 @@
     return { code, warnings, decls: normalized.decls, normalized, resolvedFormat };
   });
 
-  const displayCode = $derived(formattedCode ?? generated.code);
+  // zig fmt always runs — the user shouldn't have to think about it.  On
+  // failure (usually a raw override that isn't valid Zig) we fall back to
+  // the unformatted source and surface the reason.
+  const formatted = $derived.by(() => {
+    const raw = generated.code;
+    if (!raw || !zigFmt) return { code: raw, error: zigFmtLoadError };
+    try {
+      return { code: zigFmt(raw), error: null };
+    } catch (e) {
+      return { code: raw, error: (e as Error).message };
+    }
+  });
+  const displayCode = $derived(formatted.code);
+  const formatterError = $derived(formatted.error);
 
   // Auto-suggest a root name from the active sample's structure.  Runs
   // against the parser (not the inference output) so it works even when
@@ -180,34 +195,6 @@
     if (sig === lastSampleSig) return;
     lastSampleSig = sig;
     rootNamePinned = false;
-  });
-
-  // zig fmt always runs in the background — the user shouldn't have to
-  // think about it. WASM init is lazy, so the first format pays the load
-  // cost; subsequent edits are cheap. On failure we fall back to the
-  // unformatted source and surface a tiny notice (formatterError).
-  $effect(() => {
-    const raw = generated.code;
-    if (!raw) {
-      formattedCode = null;
-      formatterError = null;
-      return;
-    }
-    let cancelled = false;
-    formatterError = null;
-    void (async () => {
-      try {
-        const { formatZig } = await import("$lib/zigfmt");
-        const out = await formatZig(raw);
-        if (!cancelled) formattedCode = out;
-      } catch (e) {
-        if (!cancelled) {
-          formattedCode = null;
-          formatterError = (e as Error).message;
-        }
-      }
-    })();
-    return () => { cancelled = true; };
   });
 
   function loadExample(e: Example) {
@@ -354,6 +341,13 @@
       }
     }
   }
+
+  onMount(() => {
+    import("$lib/zigfmt")
+      .then((m) => m.loadZigFmt())
+      .then((fmt) => { zigFmt = fmt; })
+      .catch((e) => { zigFmtLoadError = (e as Error).message; });
+  });
 
   onMount(() => {
     const decoded = decodeShareHash(window.location.hash);

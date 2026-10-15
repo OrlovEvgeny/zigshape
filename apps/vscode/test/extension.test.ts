@@ -4,11 +4,11 @@
 // harness, which is run separately via `bun run package` in CI.
 
 import { describe, expect, test } from "bun:test";
-import { generateZig, runPipeline } from "@zigshape/core";
+import { generateZig, runPipeline, targetDefaults } from "@zigshape/core";
 import { serdeDecorator } from "@zigshape/serde-zig";
 
 function smoke(samples: string[], target: "plain" | "serde-zig"): string {
-  const r = runPipeline({ samples, rootName: "User", inferOptions: { format: "auto" } });
+  const r = runPipeline({ samples, rootName: "User", inferOptions: { ...targetDefaults(target), format: "auto" } });
   if (!r.normalized) throw new Error("pipeline failed");
   const opts = target === "serde-zig" ? serdeDecorator(r.normalized) : {};
   return generateZig(r.normalized, opts);
@@ -24,7 +24,13 @@ describe("extension generation surface", () => {
   test("serde-zig target picks up rename_all", () => {
     const code = smoke(['{"userId": 1, "firstName": "Alice"}'], "serde-zig");
     expect(code).toContain('const serde = @import("serde");');
-    expect(code).toContain("rename_all = serde.NamingConvention.camel_case");
+    expect(code).toContain("rename_all = .camel_case");
+  });
+
+  test("plain target keeps wire names so std.json can parse them", () => {
+    const code = smoke(['{"userId": 1, "first-name": "Alice"}'], "plain");
+    expect(code).toContain("userId: u8,");
+    expect(code).toContain('@"first-name": []const u8,');
   });
 
   test("multiple samples merge into optional fields", () => {

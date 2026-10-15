@@ -2,12 +2,13 @@ import * as vscode from "vscode";
 import {
   generateZig,
   runPipeline,
+  targetDefaults,
   type AliasStrategy,
   type Format,
   type IntStrategy,
   type ZigshapeOptions,
 } from "@zigshape/core";
-import { serdeDecorator } from "@zigshape/serde-zig";
+import { serdeCompatWarnings, serdeDecorator } from "@zigshape/serde-zig";
 
 type Target = "plain" | "serde-zig";
 type Preset = "api" | "strict" | "loose";
@@ -54,10 +55,13 @@ function readSettings(): Settings {
 }
 
 function generate(samples: string[], s: Settings): { code: string; warnings: string[] } | { error: string } {
+  const byTarget = targetDefaults(s.target);
   const inferOptions: Partial<ZigshapeOptions> = {
     ...PRESET_OPTIONS[s.preset],
+    ...byTarget,
     intStrategy: s.intStrategy,
-    aliases: s.aliases,
+    // Aliases are serde.zig-only; std.json can't merge keys.
+    aliases: s.target === "serde-zig" ? s.aliases : byTarget.aliases,
     format: pickFormat(),
   };
   const { normalized, warnings } = runPipeline({
@@ -68,6 +72,7 @@ function generate(samples: string[], s: Settings): { code: string; warnings: str
   if (!normalized) {
     return { error: warnings.map((w) => `${w.severity}: ${w.message}`).join("\n") || "no parseable samples" };
   }
+  if (s.target === "serde-zig") warnings.push(...serdeCompatWarnings(normalized));
   const opts = s.target === "serde-zig"
     ? serdeDecorator(normalized, { denyUnknownFields: s.denyUnknownFields })
     : {};
@@ -143,7 +148,7 @@ async function updateFromSamples(): Promise<void> {
     canSelectFolders: false,
     title: "ZigShape: pick samples to merge",
     filters: {
-      "Data files": ["json", "jsonc", "yaml", "yml", "toml", "xml"],
+      "Data files": ["json", "jsonc", "ndjson", "yaml", "yml", "toml", "xml", "csv", "zon", "toon"],
       "All files": ["*"],
     },
   });

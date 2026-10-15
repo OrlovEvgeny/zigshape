@@ -91,7 +91,7 @@
           "type": "string",
           "enum": ["auto", "off"],
           "default": "auto",
-          "description": "Cross-sample alias detection."
+          "description": "Cross-sample alias detection (serde.zig target only; std.json has no aliases)."
         },
         "zigshape.denyUnknownFields": {
           "type": "boolean",

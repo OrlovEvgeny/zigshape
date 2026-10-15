@@ -15,11 +15,14 @@ export type WebOptions = Pick<
   | "maps"
   | "enums"
   | "unions"
-  | "unknown"
   | "aliases"
   | "defaultsFromSamples"
   | "treatRootArrayAsSamples"
 > & {
+  /** `auto` picks the fallback the target can parse; see resolveTargetOptions. */
+  unknown: ZigshapeOptions["unknown"] | "auto";
+  /** `auto` follows the target: wire keys for std.json, snake_case for serde.zig. */
+  fieldNames: ZigshapeOptions["fieldNames"] | "auto";
   renameAll: RenameAllStrategy;
   denyUnknownFields: boolean;
   withDocComments: boolean;
@@ -100,20 +103,13 @@ export const OPTION_GROUPS: OptionGroup[] = [
       },
       {
         key: "unknown", kind: "select", label: "Unknown shapes", flag: "--unknown",
-        help: "Fallback for only-null or mixed-scalar fields.",
+        help: "Fallback for only-null or mixed-scalar fields. auto: std.json.Value for plain, ?serde.Value for serde.zig.",
         choices: [
+          { value: "auto", label: "auto (by target)" },
           { value: "std-json-value", label: "std.json.Value" },
           { value: "serde-value", label: "serde.Value" },
           { value: "string", label: "[]const u8" },
           { value: "compile-error", label: "@compileError" },
-        ],
-      },
-      {
-        key: "aliases", kind: "select", label: "Aliases", flag: "--aliases",
-        help: "Collapse sibling keys that never co-occur across samples.",
-        choices: [
-          { value: "auto", label: "auto" },
-          { value: "off", label: "off" },
         ],
       },
       {
@@ -144,6 +140,14 @@ export const OPTION_GROUPS: OptionGroup[] = [
         ],
       },
       {
+        key: "aliases", kind: "select", label: "Aliases", flag: "--aliases",
+        help: "Collapse sibling keys that never co-occur across samples into one field with serde.zig aliases.",
+        choices: [
+          { value: "auto", label: "auto" },
+          { value: "off", label: "off" },
+        ],
+      },
+      {
         key: "denyUnknownFields", kind: "toggle", label: "deny_unknown_fields", flag: "--deny-unknown-fields",
         help: "Reject payloads with keys the struct doesn't declare.",
       },
@@ -154,12 +158,24 @@ export const OPTION_GROUPS: OptionGroup[] = [
     title: "Output",
     fields: [
       {
+        key: "fieldNames", kind: "select", label: "Field names", flag: "--field-names",
+        help: "auto: the wire keys for plain (std.json has no rename), snake_case + serde rename for serde.zig.",
+        choices: [
+          { value: "auto", label: "auto (by target)" },
+          { value: "snake_case", label: "snake_case" },
+          { value: "wire", label: "as on the wire" },
+        ],
+      },
+      {
         key: "withDocComments", kind: "toggle", label: "Doc comments from YAML", flag: "--with-doc-comments",
         help: "Turn YAML key comments into /// lines above fields.",
       },
     ],
   },
 ];
+
+/** Knobs that only mean something for the serde.zig target. */
+const SERDE_ONLY = new Set<OptionKey>(OPTION_GROUPS.find((g) => g.id === "serde")!.fields.map((f) => f.key));
 
 const FIELDS = new Map(OPTION_GROUPS.flatMap((g) => g.fields.map((f) => [f.key, f] as const)));
 
@@ -170,8 +186,9 @@ const BASE: WebOptions = {
   maps: DEFAULT_OPTIONS.maps,
   enums: DEFAULT_OPTIONS.enums,
   unions: DEFAULT_OPTIONS.unions,
-  unknown: DEFAULT_OPTIONS.unknown,
+  unknown: "auto",
   aliases: DEFAULT_OPTIONS.aliases,
+  fieldNames: "auto",
   defaultsFromSamples: DEFAULT_OPTIONS.defaultsFromSamples,
   treatRootArrayAsSamples: DEFAULT_OPTIONS.treatRootArrayAsSamples,
   renameAll: "auto",
@@ -228,7 +245,8 @@ export function cliCommand(
   for (const field of FIELDS.values()) {
     const value = opts[field.key];
     if (value === BASE[field.key]) continue;
-    if ((field.key === "renameAll" || field.key === "denyUnknownFields") && ctx.target !== "serde-zig") continue;
+    if (value === "auto") continue;
+    if (SERDE_ONLY.has(field.key) && ctx.target !== "serde-zig") continue;
     if (field.kind === "toggle") {
       if (value === true) parts.push(field.flag);
     } else {
@@ -237,4 +255,25 @@ export function cliCommand(
   }
   parts.push("--zig-fmt");
   return parts.join(" ");
+}
+
+/** Core options for a target.  std.json can't read std.StringHashMap, has
+ *  neither rename nor alias, and serde.zig can't read std.json.Value, so
+ *  these follow the target unless the user picked something. */
+export function resolveTargetOptions(opts: WebOptions, target: "plain" | "serde-zig") {
+  const serde = target === "serde-zig";
+  return {
+    intStrategy: opts.intStrategy,
+    strings: opts.strings,
+    arrays: opts.arrays,
+    maps: opts.maps,
+    enums: opts.enums,
+    unions: opts.unions,
+    defaultsFromSamples: opts.defaultsFromSamples,
+    treatRootArrayAsSamples: opts.treatRootArrayAsSamples,
+    unknown: opts.unknown === "auto" ? (serde ? "serde-value" : "std-json-value") : opts.unknown,
+    fieldNames: opts.fieldNames === "auto" ? (serde ? "snake_case" : "wire") : opts.fieldNames,
+    aliases: serde ? opts.aliases : "off",
+    mapType: serde ? "string-hash-map" : "json-array-hash-map",
+  } satisfies Partial<ZigshapeOptions>;
 }

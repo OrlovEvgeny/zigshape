@@ -35,7 +35,7 @@ export const PRESETS: Preset[] = [
   {
     id: "loose",
     label: "Loose schema",
-    description: "Wide u64; everything that's ambiguous falls back to std.json.Value.",
+    description: "Wide u64 integers, no enum guessing; ambiguous fields fall back to a dynamic value type.",
     options: {
       intStrategy: "u64",
       enums: "off",

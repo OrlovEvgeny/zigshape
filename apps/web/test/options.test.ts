@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyEdit, cliCommand, presetOptions } from "../src/lib/options";
+import { applyEdit, cliCommand, presetOptions, resolveTargetOptions } from "../src/lib/options";
 
 describe("web options", () => {
   test("presets fill every knob", () => {
@@ -29,5 +29,16 @@ describe("web options", () => {
     expect(cliCommand(opts, { format: "auto", target: "plain", rootName: "Root" })).toBe(
       "zigshape sample.json --zig-fmt",
     );
+  });
+
+  test("auto knobs resolve to what each target can parse", () => {
+    const opts = presetOptions("api");
+    expect(resolveTargetOptions(opts, "plain")).toMatchObject({
+      unknown: "std-json-value", fieldNames: "wire", aliases: "off", mapType: "json-array-hash-map",
+    });
+    expect(resolveTargetOptions(opts, "serde-zig")).toMatchObject({
+      unknown: "serde-value", fieldNames: "snake_case", aliases: "auto", mapType: "string-hash-map",
+    });
+    expect(resolveTargetOptions({ ...opts, fieldNames: "snake_case" }, "plain").fieldNames).toBe("snake_case");
   });
 });

@@ -18,6 +18,7 @@ export {
   parseToml,
   detectFormat,
   SUPPORTED_FORMATS,
+  isRecordFormat,
   type Format,
   type ParseResult,
   type DetectResult,

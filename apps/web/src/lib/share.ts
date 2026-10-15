@@ -9,7 +9,7 @@
 
 import { sanitizeEdits, type OptionEdits } from "./options";
 import type { PresetId } from "./presets";
-import type { Format } from "@zigshape/core";
+import { SUPPORTED_FORMATS, type Format } from "@zigshape/core";
 
 export type SharedConfig = {
   rootName: string;
@@ -86,20 +86,13 @@ export function decodeShareHash(hash: string): SharedState | null {
   const s = parsed as Partial<SharedState>;
   if (typeof s.rootName !== "string") return null;
   if (s.target !== "plain" && s.target !== "serde-zig") return null;
-  if (
-    s.format !== "auto" &&
-    s.format !== "json" &&
-    s.format !== "yaml" &&
-    s.format !== "toml" &&
-    s.format !== "xml"
-  ) {
-    return null;
-  }
+  const format = s.format;
+  if (format !== "auto" && !SUPPORTED_FORMATS.includes(format as Format)) return null;
   if (typeof s.presetId !== "string") return null;
   const out: SharedState = {
     rootName: s.rootName,
     target: s.target,
-    format: s.format,
+    format: format as SharedConfig["format"],
     presetId: s.presetId as PresetId,
   };
   const options = sanitizeEdits(s.options);

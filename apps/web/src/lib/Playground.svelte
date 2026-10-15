@@ -111,6 +111,10 @@
     PRESETS.find((p) => p.id === presetId)?.options ?? {},
   );
 
+  // An empty Root struct input falls back to the same suggestion the
+  // placeholder shows, so the output never disagrees with the field.
+  const effectiveRoot = $derived(rootName.trim() || suggestedRoot || "Root");
+
   const generated = $derived.by(() => {
     const nonEmpty = samples.filter((s) => s.trim().length > 0);
     if (nonEmpty.length === 0) {
@@ -124,7 +128,7 @@
     }
     const { normalized, warnings, resolvedFormat } = runPipeline({
       samples: nonEmpty,
-      rootName,
+      rootName: effectiveRoot,
       inferOptions: { ...presetOptions, format },
       overrides,
     });
@@ -263,7 +267,7 @@
   }
 
   function downloadZig() {
-    downloadBlob(displayCode || "", `${rootName || "Root"}.zig`, "text/plain");
+    downloadBlob(displayCode || "", `${effectiveRoot}.zig`, "text/plain");
   }
 
   function downloadBlob(content: string, filename: string, mime: string) {
@@ -286,7 +290,7 @@
   async function copyParser() {
     if (!generated.normalized) return;
     const fmt: Format = generated.resolvedFormat ?? "json";
-    await copyWithFallback(emitParserHelper(rootName || "Root", target, fmt).trim() + "\n");
+    await copyWithFallback(emitParserHelper(effectiveRoot, target, fmt).trim() + "\n");
   }
 
   async function copyBuildSnippet() {
@@ -299,7 +303,7 @@
     if (!sample) return;
     const fmt: Format = generated.resolvedFormat ?? "json";
     await copyWithFallback(
-      emitTestScaffold(rootName || "Root", sample, target, fmt).trim() + "\n",
+      emitTestScaffold(effectiveRoot, sample, target, fmt).trim() + "\n",
     );
   }
 
@@ -308,7 +312,7 @@
     const report = buildReport(generated.normalized, generated.warnings);
     downloadBlob(
       JSON.stringify(report, null, 2) + "\n",
-      `${rootName || "Root"}.schema.json`,
+      `${effectiveRoot}.schema.json`,
       "application/json",
     );
   }

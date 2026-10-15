@@ -13,7 +13,7 @@ describe("--with-parser", () => {
     expect(r.stdout).toContain('@import("std")');
   });
 
-  test("serde-zig + yaml uses serde.yaml.fromSlice", async () => {
+  test("serde-zig + yaml uses the managed serde.yaml parse", async () => {
     const r = await runCli(
       [
         "--stdin",
@@ -28,7 +28,7 @@ describe("--with-parser", () => {
       "host: localhost\nport: 80",
     );
     expect(r.code).toBe(0);
-    expect(r.stdout).toContain("serde.yaml.fromSlice(Cfg");
+    expect(r.stdout).toContain("serde.yaml.fromSliceManaged(Cfg");
     expect(r.stdout).toContain('@import("serde")');
     expect(r.stdout).toContain('@import("std")');
   });
@@ -42,7 +42,7 @@ describe("--with-tests", () => {
     );
     expect(r.code).toBe(0);
     expect(r.stdout).toContain('test "parse User"');
-    expect(r.stdout).toContain("std.heap.ArenaAllocator");
+    expect(r.stdout).toContain("std.testing.allocator");
     expect(r.stdout).toContain('\\\\{"id": 1, "name": "Alice"}');
   });
 });

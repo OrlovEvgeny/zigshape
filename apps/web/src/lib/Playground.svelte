@@ -252,7 +252,8 @@
   function removeSample(i: number) {
     if (samples.length <= 1) return;
     samples = samples.filter((_, idx) => idx !== i);
-    if (activeIndex >= samples.length) activeIndex = samples.length - 1;
+    // Keep the same sample selected when a tab to its left goes away.
+    if (i < activeIndex || activeIndex >= samples.length) activeIndex -= 1;
   }
 
   async function copyZig() {

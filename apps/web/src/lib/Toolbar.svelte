@@ -13,7 +13,9 @@
     detectedFormat: Format | null;
     detectedConfidence: number | null;
     presetId: PresetId;
-    withDocComments: boolean;
+    optionsOpen: boolean;
+    editCount: number;
+    onPresetChange?: () => void;
     onLoadExample: (e: Example) => void;
     onShareConfig: () => void;
     onShareWithSamples: () => void;
@@ -29,7 +31,9 @@
     detectedFormat,
     detectedConfidence,
     presetId = $bindable(),
-    withDocComments = $bindable(),
+    optionsOpen = $bindable(),
+    editCount,
+    onPresetChange,
     onLoadExample,
     onShareConfig,
     onShareWithSamples,
@@ -96,17 +100,23 @@
 
     <label class="ctl">
       <span class="label">Preset</span>
-      <select class="select" bind:value={presetId} aria-label="Inference preset">
+      <select class="select" bind:value={presetId} onchange={() => onPresetChange?.()} aria-label="Inference preset">
         {#each PRESETS as p (p.id)}
           <option value={p.id}>{p.label}</option>
         {/each}
       </select>
     </label>
 
-    <label class="ctl check" title="Emit YAML key comments as /// doc comments">
-      <input type="checkbox" bind:checked={withDocComments} />
-      <span>Doc comments</span>
-    </label>
+    <button
+      type="button"
+      class="btn options-toggle"
+      aria-expanded={optionsOpen}
+      onclick={() => (optionsOpen = !optionsOpen)}
+    >
+      <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 4h6M11 4h1M2 10h1M6 10h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /><circle cx="9.5" cy="4" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /><circle cx="4.5" cy="10" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
+      Options
+      {#if editCount > 0}<span class="count">{editCount}</span>{/if}
+    </button>
   </div>
 
   <div class="actions">
@@ -133,7 +143,9 @@
 </div>
 
 {#if currentPreset}
-  <p class="preset-desc"><span class="preset-name">{currentPreset.label}</span>{currentPreset.description}</p>
+  <p class="preset-desc">
+    <span class="preset-name">{currentPreset.label}{editCount > 0 ? ` + ${editCount} change${editCount === 1 ? "" : "s"}` : ""}</span>{currentPreset.description}
+  </p>
 {/if}
 
 <style>
@@ -213,15 +225,18 @@
     box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.06);
   }
 
-  .check {
-    gap: 6px;
-    color: var(--text-2);
-    font-size: 13px;
-    cursor: pointer;
+  .options-toggle[aria-expanded="true"] {
+    background: var(--surface-hover);
   }
-  .check input {
-    margin: 0;
-    accent-color: var(--accent);
+  .count {
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
   }
 
   .preset-desc {

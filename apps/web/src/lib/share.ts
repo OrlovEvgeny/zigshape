@@ -7,6 +7,7 @@
 //   #s=<base64url(JSON)>   config + samples — falls back when payloads fit
 //                          under the size guard (8 KB), errors out otherwise.
 
+import { sanitizeEdits, type OptionEdits } from "./options";
 import type { PresetId } from "./presets";
 import type { Format } from "@zigshape/core";
 
@@ -15,6 +16,8 @@ export type SharedConfig = {
   target: "plain" | "serde-zig";
   format: "auto" | Format;
   presetId: PresetId;
+  /** Options the user moved away from the preset.  Omitted when empty. */
+  options?: OptionEdits;
 };
 
 export type SharedState = SharedConfig & {
@@ -99,6 +102,8 @@ export function decodeShareHash(hash: string): SharedState | null {
     format: s.format,
     presetId: s.presetId as PresetId,
   };
+  const options = sanitizeEdits(s.options);
+  if (Object.keys(options).length > 0) out.options = options;
   if (Array.isArray(s.samples) && s.samples.every((x) => typeof x === "string")) {
     out.samples = s.samples;
   }

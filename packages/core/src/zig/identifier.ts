@@ -50,7 +50,9 @@ export function identifierSource(key: string): string {
 export function sanitizeFieldName(key: string): SanitizedIdentifier {
   const snake = toSnakeCase(identifierSource(key));
   if (snake && PLAIN_IDENT_RE.test(snake)) {
-    if (isReserved(snake)) {
+    // `serde` is reserved too: serde.zig reads options from a decl of that
+    // name, which can't share the struct with a field called `serde`.
+    if (isReserved(snake) || snake === "serde") {
       return { text: snake + "_", escaped: false, changed: true };
     }
     return { text: snake, escaped: false, changed: snake !== key };

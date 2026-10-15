@@ -137,3 +137,11 @@ describe("skipped fields", () => {
     expect(code).toContain(".token = .always,");
   });
 });
+
+describe("field named serde", () => {
+  test("is renamed so it can't clash with the serde options decl", () => {
+    const { code } = gen("Deps", '{"serde": {"url": "x"}}');
+    expect(code).toContain("serde_: Serde,");
+    expect(code).toContain('.serde_ = "serde"');
+  });
+});

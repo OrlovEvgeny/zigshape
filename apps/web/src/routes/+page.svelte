@@ -15,53 +15,43 @@
   />
 </svelte:head>
 
-<main>
-  <header>
-    <h1>zigshape</h1>
-    <p class="tagline">
-      Generate idiomatic Zig structs from JSON, YAML, TOML, and XML. Built for
+<main class="page">
+  <header class="intro">
+    <h1>Zig structs from real-world data</h1>
+    <p>
+      Paste JSON, YAML, TOML or XML. zigshape infers types across every sample, explains each decision,
+      and emits plain Zig or structs ready for
       <a href="https://github.com/OrlovEvgeny/serde.zig" target="_blank" rel="noopener noreferrer">serde.zig</a>.
     </p>
   </header>
 
   <Playground />
 
-  <footer>
-    <small>Local-first. Your input never leaves the browser.</small>
-    <nav>
-      <a href="/json-to-zig-struct">JSON</a>
-      <a href="/yaml-to-zig-struct">YAML</a>
-      <a href="/toml-to-zig-struct">TOML</a>
-      <a href="/xml-to-zig-struct">XML</a>
-      ·
-      <a href="/json-to-serde-zig">JSON serde.zig</a>
-      <a href="/yaml-to-serde-zig">YAML serde.zig</a>
-      <a href="/toml-to-serde-zig">TOML serde.zig</a>
-      <a href="/xml-to-serde-zig">XML serde.zig</a>
-      ·
-      <a href="https://github.com/OrlovEvgeny/serde.zig" target="_blank" rel="noopener noreferrer">serde.zig on GitHub</a>
-    </nav>
-  </footer>
+  <section class="prose features">
+    <div>
+      <h2>Inference across samples</h2>
+      <p>Add several payloads of the same shape. Fields missing or null in any of them become optional, and integer widths fit the observed range.</p>
+    </div>
+    <div>
+      <h2>Every decision explained</h2>
+      <p>The field table shows how often each key appeared, which value kinds were seen, and where it sits in the input. Override any type in place.</p>
+    </div>
+    <div>
+      <h2>serde.zig aware</h2>
+      <p>Detects <code>rename_all</code>, collapses aliases, tags unions and marks XML attributes, so the output parses without hand edits.</p>
+    </div>
+  </section>
 </main>
 
 <style>
-  :global(body) {
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px 32px;
+    max-width: none;
+  }
+  .features p {
     margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    color: #222;
-    background: #fafafa;
+    font-size: 13px;
   }
-  main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; display: flex; flex-direction: column; min-height: 100vh; box-sizing: border-box; }
-  header h1 { margin: 0; font-size: 1.5rem; }
-  .tagline { margin: 0.25rem 0 1rem; color: #666; }
-  footer { margin-top: 2rem; color: #888; }
-  footer nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-    margin-top: 0.5rem;
-    font-size: 0.8rem;
-  }
-  footer nav a { color: #2a6; text-decoration: none; }
-  footer nav a:hover { text-decoration: underline; }
 </style>

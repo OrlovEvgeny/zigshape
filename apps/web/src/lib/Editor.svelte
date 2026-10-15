@@ -206,7 +206,13 @@
   });
 </script>
 
-<div bind:this={host} class="cm-host"></div>
+<!-- Until CodeMirror mounts (and in the prerendered HTML) the text is a
+     plain <pre>, so the code is readable without JavaScript. -->
+<div bind:this={host} class="cm-host">
+  {#if !view}
+    <pre class="cm-fallback" aria-label={label}>{value || placeholder}</pre>
+  {/if}
+</div>
 
 <style>
   .cm-host {
@@ -217,5 +223,18 @@
   .cm-host :global(.cm-editor) {
     flex: 1 1 auto;
     min-width: 0;
+  }
+  .cm-fallback {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 12px 16px 12px 54px;
+    overflow: auto;
+    background: var(--editor-bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 </style>

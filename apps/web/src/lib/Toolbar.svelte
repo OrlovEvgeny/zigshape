@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Format } from "@zigshape/core";
+  import Menu from "./Menu.svelte";
   import { EXAMPLES, type Example } from "./examples";
   import { PRESETS, type PresetId } from "./presets";
 
@@ -14,17 +15,11 @@
     presetId: PresetId;
     withDocComments: boolean;
     onLoadExample: (e: Example) => void;
-    onCopy: () => void;
-    onDownload: () => void;
     onShareConfig: () => void;
     onShareWithSamples: () => void;
-    onCopyParser: () => void;
-    onCopyBuildSnippet: () => void;
-    onCopyTestScaffold: () => void;
-    onDownloadReport: () => void;
     onRootNameInput?: () => void;
-    canCopy: boolean;
     suggestedRoot?: string | null;
+    rootAuto?: boolean;
   };
 
   let {
@@ -36,215 +31,216 @@
     presetId = $bindable(),
     withDocComments = $bindable(),
     onLoadExample,
-    onCopy,
-    onDownload,
     onShareConfig,
     onShareWithSamples,
-    onCopyParser,
-    onCopyBuildSnippet,
-    onCopyTestScaffold,
-    onDownloadReport,
     onRootNameInput,
-    canCopy,
     suggestedRoot = null,
+    rootAuto = false,
   }: Props = $props();
 
-  let extrasOpen = $state(false);
+  const FORMAT_LABEL: Record<Format, string> = {
+    json: "JSON",
+    ndjson: "NDJSON",
+    yaml: "YAML",
+    toml: "TOML",
+    xml: "XML",
+  };
 
-  let exampleId = $state("");
-  let advancedOpen = $state(false);
-
-  function pickExample(e: Event) {
-    const id = (e.currentTarget as HTMLSelectElement).value;
-    const ex = EXAMPLES.find((x) => x.id === id);
-    if (ex) onLoadExample(ex);
-    exampleId = "";
-  }
+  const autoLabel = $derived(
+    detectedFormat
+      ? `Auto · ${FORMAT_LABEL[detectedFormat]}${detectedConfidence !== null ? ` ${Math.round(detectedConfidence * 100)}%` : ""}`
+      : "Auto-detect",
+  );
 
   const currentPreset = $derived(PRESETS.find((p) => p.id === presetId));
 </script>
 
 <div class="toolbar">
-  <label>Root struct
-    <input
-      bind:value={rootName}
-      oninput={() => onRootNameInput?.()}
-      placeholder={suggestedRoot ?? "User"}
-      spellcheck="false"
-      title={suggestedRoot ? `Auto-suggested from input shape: ${suggestedRoot}` : undefined}
-    />
-  </label>
-  <label>Format
-    <select bind:value={format}>
-      <option value="auto">auto{detectedFormat
-        ? detectedConfidence !== null
-          ? ` (${detectedFormat}, ${Math.round(detectedConfidence * 100)}%)`
-          : ` (${detectedFormat})`
-        : ""}</option>
-      <option value="json">JSON</option>
-      <option value="yaml">YAML</option>
-      <option value="toml">TOML</option>
-      <option value="xml">XML</option>
-    </select>
-  </label>
-  <label>Target
-    <select bind:value={target}>
-      <option value="plain">plain</option>
-      <option value="serde-zig">serde.zig</option>
-    </select>
-  </label>
-  <label>Preset
-    <select bind:value={presetId}>
-      {#each PRESETS as p (p.id)}
-        <option value={p.id}>{p.label}</option>
-      {/each}
-    </select>
-  </label>
-  <label class="example-picker">Example
-    <select bind:value={exampleId} onchange={pickExample}>
-      <option value="" disabled>Choose…</option>
+  <div class="controls">
+    <label class="ctl root">
+      <span class="label">Root</span>
+      <span class="root-wrap">
+        <input
+          class="input mono"
+          bind:value={rootName}
+          oninput={() => onRootNameInput?.()}
+          placeholder={suggestedRoot ?? "Root"}
+          spellcheck="false"
+          autocomplete="off"
+          aria-label="Root struct name"
+        />
+        {#if rootAuto}
+          <span class="auto-tag" title="Suggested from the input shape. Type to pin your own name.">auto</span>
+        {/if}
+      </span>
+    </label>
+
+    <label class="ctl">
+      <span class="label">Format</span>
+      <select class="select" bind:value={format} aria-label="Input format">
+        <option value="auto">{autoLabel}</option>
+        <option value="json">JSON</option>
+        <option value="yaml">YAML</option>
+        <option value="toml">TOML</option>
+        <option value="xml">XML</option>
+      </select>
+    </label>
+
+    <div class="ctl">
+      <span class="label" id="target-label">Target</span>
+      <div class="seg" role="radiogroup" aria-labelledby="target-label">
+        <button type="button" role="radio" aria-checked={target === "plain"} onclick={() => (target = "plain")}>plain</button>
+        <button type="button" role="radio" aria-checked={target === "serde-zig"} onclick={() => (target = "serde-zig")}>serde.zig</button>
+      </div>
+    </div>
+
+    <label class="ctl">
+      <span class="label">Preset</span>
+      <select class="select" bind:value={presetId} aria-label="Inference preset">
+        {#each PRESETS as p (p.id)}
+          <option value={p.id}>{p.label}</option>
+        {/each}
+      </select>
+    </label>
+
+    <label class="ctl check" title="Emit YAML key comments as /// doc comments">
+      <input type="checkbox" bind:checked={withDocComments} />
+      <span>Doc comments</span>
+    </label>
+  </div>
+
+  <div class="actions">
+    <Menu label="Examples" variant="ghost" align="end" width="240px">
+      <div class="menu-heading">Load an example</div>
       {#each EXAMPLES as ex (ex.id)}
-        <option value={ex.id}>{ex.label}</option>
+        <button type="button" class="menu-item" role="menuitem" onclick={() => onLoadExample(ex)}>
+          <span>{ex.label}</span>
+          <small>{ex.samples.length} sample{ex.samples.length === 1 ? "" : "s"} · {ex.target === "serde-zig" ? "serde.zig" : "plain"}</small>
+        </button>
       {/each}
-    </select>
-  </label>
-  <label class="checkbox-label">
-    <input type="checkbox" bind:checked={withDocComments} />
-    <span>YAML doc comments</span>
-  </label>
-  <span class="spacer"></span>
-  <button type="button" onclick={onCopy} disabled={!canCopy}>Copy Zig</button>
-  <button type="button" onclick={onDownload} disabled={!canCopy}>Download</button>
-  <button type="button" onclick={onShareConfig}>Share config</button>
-  <button type="button" onclick={onShareWithSamples}>Share + samples</button>
-  <button
-    type="button"
-    class="more-toggle"
-    onclick={() => (extrasOpen = !extrasOpen)}
-    aria-expanded={extrasOpen}
-  >{extrasOpen ? "Less" : "More…"}</button>
+    </Menu>
+    <Menu label="Share" align="end" width="270px">
+      <button type="button" class="menu-item" role="menuitem" onclick={onShareConfig}>
+        <span>Copy link to settings</span>
+        <small>Root name, format, target and preset. No input data.</small>
+      </button>
+      <button type="button" class="menu-item" role="menuitem" onclick={onShareWithSamples}>
+        <span>Copy link with samples</span>
+        <small>Embeds the input in the URL hash (up to 8 KB). Nothing is uploaded.</small>
+      </button>
+    </Menu>
+  </div>
 </div>
 
-{#if extrasOpen}
-  <div class="extras-row">
-    <button type="button" onclick={onCopyParser} disabled={!canCopy}>
-      Copy parse helper
-    </button>
-    <button type="button" onclick={onCopyBuildSnippet}>
-      Copy build.zig snippet
-    </button>
-    <button type="button" onclick={onCopyTestScaffold} disabled={!canCopy}>
-      Copy test scaffold
-    </button>
-    <button type="button" onclick={onDownloadReport} disabled={!canCopy}>
-      Download schema report
-    </button>
-  </div>
-{/if}
-
 {#if currentPreset}
-  <p class="preset-desc">{currentPreset.description}
-    <button type="button" class="advanced" onclick={() => (advancedOpen = !advancedOpen)}>
-      {advancedOpen ? "hide" : "advanced…"}
-    </button>
-  </p>
-{/if}
-
-{#if advancedOpen}
-  <p class="advanced-note">Advanced overrides for individual inference flags arrive in v0.2.1. For now, presets bundle the available knobs.</p>
+  <p class="preset-desc"><span class="preset-name">{currentPreset.label}</span>{currentPreset.description}</p>
 {/if}
 
 <style>
   .toolbar {
     display: flex;
-    gap: 1rem;
-    align-items: end;
     flex-wrap: wrap;
-    margin-bottom: 0.5rem;
-  }
-  .toolbar label {
-    display: flex;
-    flex-direction: column;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #666;
-  }
-  .toolbar label.checkbox-label {
-    flex-direction: row;
     align-items: center;
-    gap: 0.35rem;
-    text-transform: none;
-    letter-spacing: 0;
-    color: #222;
-    font-size: 0.85rem;
+    justify-content: space-between;
+    gap: 10px 24px;
   }
-  .toolbar input,
-  .toolbar select {
-    margin-top: 0.25rem;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.9rem;
-    text-transform: none;
-    color: #222;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: #fff;
-  }
-  .toolbar label.checkbox-label input { margin-top: 0; }
-  .toolbar input { min-width: 8rem; }
-  .toolbar button {
-    padding: 0.4rem 0.85rem;
-    font-size: 0.85rem;
-    border: 1px solid #ccc;
-    background: #fff;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .toolbar button:hover:not(:disabled) { background: #f3f3f3; }
-  .more-toggle { color: #2a6; }
-  .extras-row {
+  .controls {
     display: flex;
-    gap: 0.5rem;
     flex-wrap: wrap;
-    margin: 0 0 0.75rem;
+    align-items: center;
+    gap: 10px 20px;
   }
-  .extras-row button {
-    padding: 0.35rem 0.75rem;
-    font-size: 0.8rem;
-    border: 1px dashed #ccc;
-    background: #fafafa;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .extras-row button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .extras-row button:hover:not(:disabled) { background: #efefef; }
-  .spacer { flex: 1 1 auto; }
-  .example-picker { min-width: 14rem; }
-  .preset-desc {
-    color: #666;
-    font-size: 0.8rem;
-    margin: 0 0 1rem;
+  .actions {
     display: flex;
-    gap: 0.5rem;
-    align-items: baseline;
+    align-items: center;
+    gap: 6px;
   }
-  .preset-desc .advanced {
-    background: none;
+  .ctl {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ctl .label {
+    font-size: 11px;
+  }
+  .root-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+  .root .input {
+    width: 150px;
+    padding-right: 42px;
+  }
+  .auto-tag {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--surface-hover);
+    color: var(--text-3);
+    font-size: 10.5px;
+    pointer-events: auto;
+    cursor: help;
+  }
+
+  .seg {
+    display: inline-flex;
+    padding: 2px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+  }
+  .seg button {
+    height: 24px;
+    padding: 0 10px;
     border: 0;
-    color: #2a6;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: 12px;
     cursor: pointer;
-    padding: 0;
-    font-size: 0.8rem;
-    text-decoration: underline;
+    transition: background-color 0.12s, color 0.12s;
   }
-  .advanced-note {
-    color: #888;
-    font-size: 0.8rem;
-    margin: 0 0 1rem;
-    padding: 0.5rem 0.75rem;
-    background: #fafafa;
-    border-left: 3px solid #ddd;
-    border-radius: 0 4px 4px 0;
+  .seg button:hover {
+    color: var(--text);
+  }
+  .seg button[aria-checked="true"] {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.06);
+  }
+
+  .check {
+    gap: 6px;
+    color: var(--text-2);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .check input {
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  .preset-desc {
+    margin: 10px 0 14px;
+    color: var(--text-3);
+    font-size: 12.5px;
+  }
+  .preset-name {
+    margin-right: 8px;
+    color: var(--text-2);
+    font-weight: 500;
+  }
+
+  @media (max-width: 640px) {
+    .controls {
+      gap: 10px 14px;
+    }
+    .root .input {
+      width: 130px;
+    }
   }
 </style>

@@ -3,9 +3,10 @@
   import { json } from "@codemirror/lang-json";
   import { xml } from "@codemirror/lang-xml";
   import { yaml } from "@codemirror/lang-yaml";
-  import { Compartment, EditorSelection, EditorState, StateEffect, StateField } from "@codemirror/state";
-  import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+  import { Annotation, Compartment, EditorSelection, EditorState, StateEffect, StateField } from "@codemirror/state";
+  import { Decoration, EditorView, placeholder as placeholderExt, type DecorationSet } from "@codemirror/view";
   import { basicSetup } from "codemirror";
+  import { codeHighlighting } from "$lib/highlight";
   import { zig } from "$lib/zig-lang";
 
   export type HighlightRange = { from: number; length: number; nonce: number };
@@ -13,22 +14,30 @@
 
   type Props = {
     value: string;
+    onChange?: (text: string) => void;
     language?: EditorLanguage;
     readonly?: boolean;
     highlight?: HighlightRange | null;
+    placeholder?: string;
+    label?: string;
   };
 
   let {
-    value = $bindable(""),
+    value,
+    onChange,
     language = "json",
     readonly = false,
     highlight = null,
+    placeholder = "",
+    label,
   }: Props = $props();
 
   let host: HTMLDivElement;
-  let view: EditorView | undefined;
-  let lastInternal = "";
+  let view = $state.raw<EditorView | undefined>();
   const langCompartment = new Compartment();
+  // Marks transactions that mirror the `value` prop, so they don't echo
+  // back through `onChange` as if the user had typed them.
+  const fromProp = Annotation.define<boolean>();
 
   const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
   const highlightField = StateField.define<DecorationSet>({
@@ -57,6 +66,71 @@
     provide: (f) => EditorView.decorations.from(f),
   });
 
+  // Every colour is a CSS variable from app.css so the editor follows the
+  // page theme (light/dark) without reconfiguration.
+  const theme = EditorView.theme({
+    "&": {
+      height: "100%",
+      backgroundColor: "var(--editor-bg)",
+      color: "var(--text)",
+      fontSize: "12.5px",
+    },
+    "&.cm-focused": { outline: "none" },
+    ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.65" },
+    ".cm-content": { padding: "12px 0", caretColor: "var(--text)" },
+    ".cm-line": { padding: "0 16px 0 4px" },
+    ".cm-gutters": {
+      backgroundColor: "var(--editor-bg)",
+      color: "var(--editor-gutter)",
+      border: "none",
+    },
+    ".cm-lineNumbers .cm-gutterElement": { padding: "0 8px 0 14px", minWidth: "40px" },
+    ".cm-foldGutter .cm-gutterElement": { color: "var(--text-3)", padding: "0 2px" },
+    ".cm-activeLine": { backgroundColor: "var(--editor-active)" },
+    ".cm-activeLineGutter": { backgroundColor: "var(--editor-active)", color: "var(--text-2)" },
+    "&:not(.cm-focused) .cm-activeLine, &:not(.cm-focused) .cm-activeLineGutter": {
+      backgroundColor: "transparent",
+    },
+    "&:not(.cm-focused) .cm-activeLineGutter": { color: "var(--editor-gutter)" },
+    "&:not(.cm-focused) .cm-matchingBracket": { backgroundColor: "transparent" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionLayer .cm-selectionBackground, .cm-content ::selection":
+      { backgroundColor: "var(--editor-selection)" },
+    ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
+      backgroundColor: "var(--accent-soft)",
+      outline: "none",
+    },
+    ".cm-selectionMatch": { backgroundColor: "var(--accent-soft)" },
+    ".cm-placeholder": { color: "var(--text-3)" },
+    ".cm-foldPlaceholder": {
+      backgroundColor: "var(--surface-hover)",
+      border: "1px solid var(--border)",
+      color: "var(--text-2)",
+    },
+    ".cm-tooltip": {
+      backgroundColor: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius-sm)",
+      boxShadow: "var(--shadow-pop)",
+    },
+    ".cm-panels": { backgroundColor: "var(--surface-2)", color: "var(--text)" },
+    ".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--border)" },
+    ".cm-searchMatch": { backgroundColor: "var(--editor-mark)" },
+    ".cm-zigshape-highlight": {
+      backgroundColor: "var(--editor-mark)",
+      borderRadius: "2px",
+      boxShadow: "0 0 0 1px var(--editor-mark)",
+    },
+  });
+
+  // The output pane is for reading and selecting, not editing: no caret,
+  // no active-line band.
+  const readonlyTheme = EditorView.theme({
+    ".cm-cursor": { display: "none" },
+    ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "transparent" },
+    ".cm-activeLineGutter": { color: "var(--editor-gutter)" },
+  });
+
   function languageExtension(lang: EditorLanguage) {
     if (lang === "json") return json();
     if (lang === "yaml") return yaml();
@@ -66,44 +140,48 @@
   }
 
   onMount(() => {
+    // Earlier themes win, so the readonly tweaks go first.
     const extensions = [
+      readonly ? readonlyTheme : [],
       basicSetup,
+      theme,
+      codeHighlighting,
       EditorView.lineWrapping,
       EditorState.readOnly.of(readonly),
       highlightField,
       langCompartment.of(languageExtension(language)),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged && !readonly) {
-          const text = u.state.doc.toString();
-          lastInternal = text;
-          value = text;
-        }
+        if (!u.docChanged || readonly) return;
+        if (u.transactions.some((tr) => tr.annotation(fromProp))) return;
+        onChange?.(u.state.doc.toString());
       }),
     ];
+    if (placeholder) extensions.push(placeholderExt(placeholder));
+    if (label) extensions.push(EditorView.contentAttributes.of({ "aria-label": label }));
 
-    view = new EditorView({
-      doc: value,
-      extensions,
-      parent: host,
-    });
-    lastInternal = value;
+    view = new EditorView({ doc: value, extensions, parent: host });
   });
 
   onDestroy(() => view?.destroy());
 
+  // Push external value changes (tab switch, example load, curl rewrite)
+  // into the editor.  Edits that originated in the editor already match.
   $effect(() => {
+    const next = value;
     if (!view) return;
-    if (value === lastInternal) return;
     const cur = view.state.doc.toString();
-    if (cur === value) return;
-    view.dispatch({ changes: { from: 0, to: cur.length, insert: value } });
-    lastInternal = value;
+    if (cur === next) return;
+    view.dispatch({
+      changes: { from: 0, to: cur.length, insert: next },
+      annotations: fromProp.of(true),
+    });
   });
 
   // Hot-swap the language extension when the prop changes.
   $effect(() => {
+    const ext = languageExtension(language);
     if (!view) return;
-    view.dispatch({ effects: langCompartment.reconfigure(languageExtension(language)) });
+    view.dispatch({ effects: langCompartment.reconfigure(ext) });
   });
 
   $effect(() => {
@@ -126,7 +204,7 @@
   });
 </script>
 
-<div bind:this={host} class="cm-host" class:readonly></div>
+<div bind:this={host} class="cm-host"></div>
 
 <style>
   .cm-host {
@@ -136,42 +214,6 @@
   }
   .cm-host :global(.cm-editor) {
     flex: 1 1 auto;
-    height: 100%;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .cm-host :global(.cm-scroller) {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 0.85rem;
-    line-height: 1.45;
-  }
-  .cm-host :global(.cm-content) { padding: 0.5rem 0; }
-  .cm-host :global(.cm-zigshape-highlight) {
-    background: rgba(255, 213, 79, 0.55);
-    border-radius: 2px;
-    box-shadow: 0 0 0 1px rgba(180, 130, 0, 0.45);
-  }
-  .cm-host.readonly :global(.cm-editor) {
-    background: #1e1e1e;
-    border-color: #1e1e1e;
-  }
-  .cm-host.readonly :global(.cm-content),
-  .cm-host.readonly :global(.cm-line) {
-    color: #d4d4d4;
-    caret-color: transparent;
-  }
-  .cm-host.readonly :global(.cm-gutters) {
-    background: #1e1e1e;
-    border-color: #2a2a2a;
-    color: #666;
-  }
-  .cm-host.readonly :global(.cm-zigshape-highlight) {
-    background: rgba(255, 213, 79, 0.3);
-    box-shadow: 0 0 0 1px rgba(255, 213, 79, 0.6);
-  }
-  .cm-host.readonly :global(.cm-activeLineGutter),
-  .cm-host.readonly :global(.cm-activeLine) {
-    background: transparent;
+    min-width: 0;
   }
 </style>

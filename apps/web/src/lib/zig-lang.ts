@@ -4,13 +4,7 @@
 // literals, numbers (hex/oct/bin/dec/float), comments (line + ///doc), and
 // PascalCase type references. No semantic analysis — pure regex stream.
 
-import {
-  HighlightStyle,
-  StreamLanguage,
-  syntaxHighlighting,
-  type StringStream,
-} from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
+import { StreamLanguage, type StringStream } from "@codemirror/language";
 
 const KEYWORDS = new Set([
   "addrspace", "align", "allowzero", "and", "anyframe", "anytype", "asm",
@@ -96,25 +90,8 @@ export const zigLanguage = StreamLanguage.define<ZigState>({
   },
 });
 
-// Dark-friendly palette tuned for the readonly output editor
-// (background #1e1e1e). Avoids purple keywords and red strings; greens,
-// oranges, cyan, and yellow read well over the dark background.
-const zigHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: "#ff9b50" },
-  { tag: t.controlKeyword, color: "#ff9b50" },
-  { tag: t.atom, color: "#61afef" },
-  { tag: t.bool, color: "#61afef" },
-  { tag: t.null, color: "#61afef" },
-  { tag: t.number, color: "#d19a66" },
-  { tag: t.string, color: "#98c379" },
-  { tag: t.character, color: "#98c379" },
-  { tag: t.comment, color: "#7a8694", fontStyle: "italic" },
-  { tag: t.docComment, color: "#7a8694", fontStyle: "italic" },
-  { tag: t.typeName, color: "#56b6c2" },
-  { tag: t.macroName, color: "#e5c07b" },
-  { tag: t.variableName, color: "#d4d4d4" },
-]);
-
+// Colours come from the shared palette in highlight.ts, which the Editor
+// installs for every language.
 export function zig() {
-  return [zigLanguage, syntaxHighlighting(zigHighlightStyle)];
+  return zigLanguage;
 }

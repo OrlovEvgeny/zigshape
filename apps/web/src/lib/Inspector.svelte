@@ -21,6 +21,10 @@
   let draftOptionalMode = $state<"inferred" | "true" | "false">("inferred");
 
   function startEdit(f: ZigField) {
+    if (editingPath === f.path) {
+      editingPath = null;
+      return;
+    }
     editingPath = f.path;
     const ov = overrides[f.path] ?? {};
     draftType = ov.type ?? "";
@@ -55,349 +59,556 @@
     editingPath = null;
   }
 
-  function reasonText(f: ZigField): string {
+  function presence(f: ZigField): { label: string; detail: string | null } {
     const optional = f.defaultExpr === "null";
-    if (!optional) return `${f.observedCount}/${f.parentTotal} samples — required`;
-    const ratio = `${f.observedCount}/${f.parentTotal}`;
+    if (!optional) return { label: "required", detail: null };
+    const missing = f.parentTotal - f.observedCount;
     switch (f.optionalReason) {
       case "missing":
-        return `${ratio} samples — optional (missing in ${f.parentTotal - f.observedCount})`;
+        return { label: "optional", detail: `missing in ${missing}` };
       case "null":
-        return `${ratio} samples — optional (null observed)`;
+        return { label: "optional", detail: "null seen" };
       case "missing-and-null":
-        return `${ratio} samples — optional (missing and null both observed)`;
+        return { label: "optional", detail: `null seen, missing in ${missing}` };
       default:
-        return `${ratio} samples — optional`;
+        return { label: "optional", detail: null };
     }
   }
 
-  function kindBreakdown(f: ZigField): string | null {
-    if (!f.kindCounts) return null;
-    const parts: string[] = [];
-    for (const [k, c] of Object.entries(f.kindCounts)) {
-      if (c > 0) parts.push(`${k}: ${c}`);
+  function kinds(f: ZigField): [string, number][] {
+    const out: [string, number][] = [];
+    if (f.kindCounts) {
+      for (const [k, c] of Object.entries(f.kindCounts)) if (c > 0) out.push([k, c]);
     }
-    const missing = f.parentTotal - f.observedCount;
-    if (missing > 0) parts.push(`missing: ${missing}`);
-    return parts.length > 0 ? parts.join(" · ") : null;
+    return out;
+  }
+
+  function wireKeys(f: ZigField): string[] {
+    const keys: string[] = [];
+    if (f.renamed && f.originalKey) keys.push(f.originalKey);
+    if (f.aliases) keys.push(...f.aliases);
+    return keys;
+  }
+
+  function fieldCount(d: Decl): string {
+    if (d.kind === "struct") return `${d.fields.length} field${d.fields.length === 1 ? "" : "s"}`;
+    return `${d.variants.length} variant${d.variants.length === 1 ? "" : "s"}`;
   }
 
   const overrideCount = $derived(Object.keys(overrides).length);
 </script>
 
 {#if decls.length > 0}
-  <section class="inspector">
-    <div class="header">
-      <h2>Field decisions</h2>
+  <section class="inspector" aria-labelledby="inspector-title">
+    <header class="head">
+      <div>
+        <h2 id="inspector-title">Field decisions</h2>
+        <p>Why each field got its type. Click a row to see it in the input; edit to override.</p>
+      </div>
       {#if overrideCount > 0}
-        <button type="button" class="clear-all" onclick={onClearAll}>
+        <button type="button" class="btn sm" onclick={onClearAll}>
           Clear {overrideCount} override{overrideCount === 1 ? "" : "s"}
         </button>
       {/if}
-    </div>
-    <div class="decls">
-      {#each decls as decl (decl.name)}
-        <details open>
-          <summary>
-            <span class="kind">{decl.kind}</span>
-            <span class="struct">{decl.name}</span>
-            <span class="path">{decl.path}</span>
-          </summary>
-          {#if decl.kind === "struct"}
-            {#if decl.fields.length === 0}
-              <p class="empty">(no fields)</p>
-            {:else}
-              <ul>
-                {#each decl.fields as f (f.name)}
-                  {@const alts = suggestAlternatives(f.type)}
-                  <li class:open={editingPath === f.path}>
-                    <button type="button" class="row" onclick={() => onJump(f.path)}>
-                      <code class="field">{f.name}</code>
-                      <span class="type">: {renderZigType(f.type)}</span>
-                      {#if f.defaultExpr !== undefined}<span class="default"> = {f.defaultExpr}</span>{/if}
-                      {#if f.overridden}<span class="badge">overridden</span>{/if}
-                      {#if f.aliases && f.aliases.length > 0}
-                        <span class="badge alias">aliases: {f.aliases.join(", ")}</span>
-                      {/if}
-                      <span class="reason">{reasonText(f)}</span>
-                      {#if kindBreakdown(f)}
-                        <span class="breakdown">{kindBreakdown(f)}</span>
-                      {/if}
-                      {#if f.renamed}
-                        <span class="rename">renamed from <code>{f.originalKey}</code></span>
-                      {/if}
-                    </button>
-                    <span class="actions">
-                      {#if editingPath === f.path}
-                        <button type="button" class="link" onclick={cancelEdit}>cancel</button>
-                      {:else}
-                        <button type="button" class="link" onclick={() => startEdit(f)}>override…</button>
-                      {/if}
-                      {#if f.overridden}
-                        <button type="button" class="link" onclick={() => resetField(f.path)}>reset</button>
-                      {/if}
-                    </span>
-                    {#if alts.length > 0 && editingPath !== f.path}
-                      <div class="alternatives">
-                        <span class="alternatives-label">Alternatives:</span>
-                        {#each alts as alt (alt)}
-                          <button
-                            type="button"
-                            class="alt"
-                            onclick={() => applyAlternative(f, alt)}
-                            title="Apply as override"
-                          ><code>{alt}</code></button>
+    </header>
+
+    {#each decls as decl (decl.name)}
+      <details open class="decl">
+        <summary>
+          <svg class="caret" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M2 1l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          <span class="kind">{decl.kind}</span>
+          <code class="decl-name">{decl.name}</code>
+          <code class="decl-path">{decl.path}</code>
+          <span class="count">{fieldCount(decl)}</span>
+        </summary>
+
+        {#if decl.kind === "struct"}
+          {#if decl.fields.length === 0}
+            <p class="empty">No fields observed.</p>
+          {:else}
+            <div class="table">
+              <div class="tr th" aria-hidden="true">
+                <span>Field</span>
+                <span>Type</span>
+                <span>Presence</span>
+                <span>Observed</span>
+                <span>Wire key</span>
+                <span></span>
+              </div>
+              {#each decl.fields as f (f.name)}
+                {@const p = presence(f)}
+                {@const keys = wireKeys(f)}
+                {@const ratio = f.parentTotal > 0 ? f.observedCount / f.parentTotal : 0}
+                <div class="group" class:open={editingPath === f.path}>
+                  <div class="tr">
+                    <button type="button" class="cell-main" onclick={() => onJump(f.path)} title="Show in input">
+                      <span class="c-field">
+                        <code>{f.name}</code>
+                        {#if f.overridden}<span class="tag accent">override</span>{/if}
+                      </span>
+                      <span class="c-type">
+                        <code>{renderZigType(f.type)}</code>
+                        {#if f.defaultExpr !== undefined}<code class="default">= {f.defaultExpr}</code>{/if}
+                      </span>
+                      <span class="c-presence">
+                        <span class="meter" aria-hidden="true"><span style:width="{Math.round(ratio * 100)}%"></span></span>
+                        <span class="ratio">{f.observedCount}/{f.parentTotal}</span>
+                        <span class="plabel" class:optional={p.label === "optional"}>{p.label}</span>
+                        {#if p.detail}<span class="pdetail">{p.detail}</span>{/if}
+                      </span>
+                      <span class="c-kinds">
+                        {#each kinds(f) as [k, c] (k)}
+                          <span class="kindcount">{k}<b>{c}</b></span>
+                        {:else}
+                          <span class="muted">—</span>
                         {/each}
-                      </div>
-                    {/if}
-                    {#if editingPath === f.path}
-                      <div class="editor">
+                      </span>
+                      <span class="c-wire">
+                        {#if keys.length > 0}
+                          {#each keys as k, i (k)}<code class:alias={i > 0 || !f.renamed}>{k}</code>{/each}
+                        {:else}
+                          <span class="muted">same</span>
+                        {/if}
+                      </span>
+                    </button>
+                    <span class="c-actions">
+                      {#if f.overridden}
+                        <button type="button" class="btn ghost sm" onclick={() => resetField(f.path)}>Reset</button>
+                      {/if}
+                      <button
+                        type="button"
+                        class="btn ghost sm"
+                        aria-expanded={editingPath === f.path}
+                        onclick={() => startEdit(f)}
+                      >Edit</button>
+                    </span>
+                  </div>
+
+                  {#if editingPath === f.path}
+                    {@const alts = suggestAlternatives(f.type)}
+                    <div class="editor">
+                      {#if alts.length > 0}
+                        <div class="alts">
+                          <span class="label">Alternatives</span>
+                          {#each alts as alt (alt)}
+                            <button type="button" class="alt" onclick={() => applyAlternative(f, alt)} title="Apply as override">
+                              <code>{alt}</code>
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
+                      <form
+                        class="form"
+                        onsubmit={(e) => {
+                          e.preventDefault();
+                          saveEdit(f.path);
+                        }}
+                      >
                         <label>
-                          <span>Type (raw Zig)</span>
-                          <input bind:value={draftType} placeholder="[]const u8" spellcheck="false" />
+                          <span class="label">Type (raw Zig)</span>
+                          <input class="input mono" bind:value={draftType} placeholder={renderZigType(f.type)} spellcheck="false" />
                         </label>
                         <label>
-                          <span>Name</span>
-                          <input bind:value={draftName} placeholder={f.name} spellcheck="false" />
+                          <span class="label">Name</span>
+                          <input class="input mono" bind:value={draftName} placeholder={f.name} spellcheck="false" />
                         </label>
                         <label>
-                          <span>Optional</span>
-                          <select bind:value={draftOptionalMode}>
+                          <span class="label">Optional</span>
+                          <select class="select" bind:value={draftOptionalMode}>
                             <option value="inferred">inferred</option>
                             <option value="true">force optional</option>
                             <option value="false">force required</option>
                           </select>
                         </label>
-                        <button type="button" class="primary" onclick={() => saveEdit(f.path)}>Save</button>
-                      </div>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          {:else if decl.kind === "enum"}
-            {#if decl.variants.length === 0}
-              <p class="empty">(no variants)</p>
-            {:else}
-              <ul>
-                {#each decl.variants as v (v.zigName)}
-                  <li>
-                    <button type="button" class="row" onclick={() => onJump(decl.path)}>
-                      <code class="field">{v.zigName}</code>
-                      <span class="reason">observed {v.observedCount}× — value <code>{v.rawValue}</code></span>
-                      {#if v.renamed}
-                        <span class="rename">renamed from <code>{v.rawValue}</code></span>
-                      {/if}
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          {:else}
-            {#if decl.variants.length === 0}
-              <p class="empty">(no variants)</p>
-            {:else}
-              <ul>
-                {#each decl.variants as v (v.zigName)}
-                  <li>
-                    <button type="button" class="row" onclick={() => onJump(decl.path)}>
-                      <code class="field">{v.zigName}</code>
-                      <span class="reason">tag <code>{decl.tagField}</code> = <code>{v.tagValue}</code> · observed {v.observedCount}×</span>
-                      {#if v.renamed}
-                        <span class="rename">renamed from <code>{v.tagValue}</code></span>
-                      {/if}
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
+                        <span class="form-actions">
+                          <button type="button" class="btn ghost" onclick={cancelEdit}>Cancel</button>
+                          <button type="submit" class="btn primary">Apply</button>
+                        </span>
+                      </form>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
           {/if}
-        </details>
-      {/each}
-    </div>
+        {:else if decl.kind === "enum"}
+          {#if decl.variants.length === 0}
+            <p class="empty">No variants observed.</p>
+          {:else}
+            <div class="table variants">
+              <div class="tr th" aria-hidden="true">
+                <span>Variant</span>
+                <span>Wire value</span>
+                <span>Observed</span>
+              </div>
+              {#each decl.variants as v (v.zigName)}
+                <button type="button" class="tr vrow" onclick={() => onJump(decl.path)}>
+                  <span><code>{v.zigName}</code></span>
+                  <span><code class="wire">"{v.rawValue}"</code></span>
+                  <span class="muted">{v.observedCount}×</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {:else}
+          {#if decl.variants.length === 0}
+            <p class="empty">No variants observed.</p>
+          {:else}
+            <div class="table variants">
+              <div class="tr th" aria-hidden="true">
+                <span>Variant</span>
+                <span>Discriminator</span>
+                <span>Observed</span>
+              </div>
+              {#each decl.variants as v (v.zigName)}
+                <button type="button" class="tr vrow" onclick={() => onJump(decl.path)}>
+                  <span><code>{v.zigName}</code></span>
+                  <span><code class="wire">{decl.tagField} = "{v.tagValue}"</code></span>
+                  <span class="muted">{v.observedCount}×</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {/if}
+      </details>
+    {/each}
   </section>
 {/if}
 
 <style>
-  .inspector { margin-top: 1.5rem; }
-  .header { display: flex; align-items: baseline; gap: 1rem; }
-  .header h2 { font-size: 0.9rem; margin: 0 0 0.5rem; }
-  .clear-all {
-    background: none;
-    border: 0;
-    color: #2a6;
-    cursor: pointer;
-    font-size: 0.8rem;
-    padding: 0;
-    text-decoration: underline;
+  .inspector {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
   }
-  .decls details {
-    margin-bottom: 0.5rem;
-    background: #fff;
-    border: 1px solid #e3e3e3;
-    border-radius: 4px;
-    padding: 0.5rem 0.75rem;
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .head h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .head p {
+    margin: 1px 0 0;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+
+  .decl + .decl {
+    border-top: 1px solid var(--border);
   }
   summary {
-    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
     list-style: none;
-    display: flex;
-    gap: 0.75rem;
-    align-items: baseline;
-    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
   }
-  summary::-webkit-details-marker { display: none; }
-  summary::before {
-    content: "▸";
-    font-size: 0.7rem;
-    color: #888;
+  summary::-webkit-details-marker {
+    display: none;
   }
-  details[open] summary::before { content: "▾"; }
+  summary:hover {
+    background: var(--surface-hover);
+  }
+  .caret {
+    color: var(--text-3);
+    transition: transform 0.12s;
+  }
+  details[open] .caret {
+    transform: rotate(90deg);
+  }
   .kind {
-    font-size: 0.7rem;
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #888;
-    background: #f0f0f0;
-    padding: 0 0.35rem;
-    border-radius: 2px;
   }
-  .struct { font-weight: 600; }
-  .path { color: #888; font-size: 0.75rem; font-family: ui-monospace, monospace; }
-  ul { list-style: none; padding: 0; margin: 0.5rem 0 0; }
-  li {
-    border-radius: 3px;
-    padding: 0;
-    position: relative;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
+  .decl-name {
+    color: var(--syn-type);
+    font-size: 13px;
+    font-weight: 500;
   }
-  li.open { background: #f7faff; }
-  li button.row {
-    flex: 1 1 auto;
-    text-align: left;
-    background: none;
+  .decl-path {
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .count {
+    margin-left: auto;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .empty {
+    margin: 0;
+    padding: 4px 14px 14px 32px;
+    color: var(--text-3);
+    font-size: 12.5px;
+  }
+
+  /* Field table: one grid template shared by header and rows. */
+  .table {
+    --cols: minmax(130px, 1.1fr) minmax(130px, 1.3fr) minmax(170px, 1.3fr) minmax(110px, 1fr) minmax(90px, 0.9fr);
+    padding: 0 6px 8px;
+  }
+  .tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .th {
+    grid-template-columns: var(--cols) 92px;
+    padding: 2px 8px 6px 26px;
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .group {
+    border-radius: var(--radius-sm);
+  }
+  .group.open {
+    background: var(--surface-2);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .cell-main {
+    display: grid;
+    grid-template-columns: var(--cols);
+    align-items: center;
+    min-width: 0;
+    padding: 7px 8px 7px 26px;
     border: 0;
-    padding: 0.35rem 0.5rem;
-    cursor: pointer;
-    font: inherit;
+    border-radius: var(--radius-sm);
+    background: transparent;
     color: inherit;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: baseline;
-  }
-  li button.row:hover { background: #f3f6ff; }
-  .actions {
-    display: flex;
-    gap: 0.4rem;
-    padding: 0 0.5rem;
-  }
-  .actions .link {
-    background: none;
-    border: 0;
-    color: #2a6;
+    font-size: 12.5px;
+    text-align: left;
     cursor: pointer;
-    font-size: 0.75rem;
-    padding: 0;
-    text-decoration: underline;
   }
-  .field { font-family: ui-monospace, monospace; font-size: 0.85rem; }
-  .type { color: #555; font-size: 0.85rem; }
-  .default { color: #888; font-size: 0.85rem; }
-  .badge {
-    background: #fff3d3;
-    color: #8b6a00;
-    border-radius: 2px;
-    padding: 0 0.3rem;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  .cell-main:hover {
+    background: var(--surface-hover);
   }
-  .badge.alias { background: #e6f4ff; color: #205085; }
-  .reason { color: #666; font-size: 0.75rem; flex: 1 1 auto; }
-  .reason code { background: #eef; padding: 0 0.25rem; border-radius: 2px; }
-  .breakdown {
-    color: #466;
-    font-size: 0.7rem;
-    font-family: ui-monospace, monospace;
-    background: #f0f7f3;
-    padding: 0.05rem 0.4rem;
-    border-radius: 2px;
-  }
-  .rename { font-size: 0.75rem; color: #2a6; }
-  .rename code { background: #eef9f0; padding: 0 0.25rem; border-radius: 2px; }
-  .empty { color: #888; font-size: 0.8rem; margin: 0.25rem 0 0; }
-  .editor {
-    flex: 1 1 100%;
+  .cell-main > span {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: end;
-    padding: 0.5rem;
-    background: #f7faff;
-    border-top: 1px solid #e3e6f3;
-    border-radius: 0 0 3px 3px;
+    align-items: center;
+    gap: 4px 8px;
+    min-width: 0;
+    padding-right: 12px;
   }
-  .editor label {
+  .c-field code {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .c-type code {
+    color: var(--syn-type);
+    word-break: break-all;
+  }
+  .c-type .default {
+    color: var(--text-3);
+  }
+  .c-presence {
+    font-size: 12px;
+  }
+  .meter {
+    position: relative;
+    width: 34px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .meter span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 2px;
+    background: var(--text-2);
+  }
+  .ratio {
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .plabel {
+    color: var(--text-2);
+  }
+  .plabel.optional {
+    color: var(--warn);
+  }
+  .pdetail {
+    color: var(--text-3);
+  }
+  .kindcount {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    color: var(--text-2);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+  .kindcount b {
+    color: var(--text-3);
+    font-weight: 400;
+  }
+  .c-wire code {
+    color: var(--syn-string);
+    font-size: 12px;
+  }
+  .c-wire code.alias {
+    color: var(--text-2);
+  }
+  .muted {
+    color: var(--text-3);
+  }
+  .tag {
+    padding: 0 5px;
+    border-radius: 3px;
+    background: var(--surface-hover);
+    color: var(--text-2);
+    font-size: 10.5px;
+    line-height: 16px;
+  }
+  .tag.accent {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .c-actions {
+    display: inline-flex;
+    justify-content: flex-end;
+    gap: 2px;
+    width: 92px;
+    padding-right: 4px;
+  }
+
+  .editor {
     display: flex;
     flex-direction: column;
-    font-size: 0.7rem;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    gap: 10px;
+    padding: 4px 12px 12px 34px;
   }
-  .editor input,
-  .editor select {
-    margin-top: 0.2rem;
-    padding: 0.3rem 0.5rem;
-    font-size: 0.85rem;
-    text-transform: none;
-    color: #222;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    background: #fff;
-    min-width: 9rem;
-  }
-  .editor button.primary {
-    padding: 0.35rem 0.85rem;
-    font-size: 0.85rem;
-    border: 1px solid #6c8aff;
-    background: #6c8aff;
-    color: #fff;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-  .editor button.primary:hover { filter: brightness(1.05); }
-  .alternatives {
-    flex: 1 1 100%;
+  .alts {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.35rem;
-    align-items: baseline;
-    padding: 0 0.5rem 0.4rem;
+    align-items: center;
+    gap: 6px;
   }
-  .alternatives-label {
-    color: #888;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+  .alts .label {
+    margin-right: 4px;
   }
   .alt {
-    background: #fff;
-    border: 1px dashed #cbd5f0;
-    color: #2a3a72;
-    border-radius: 3px;
-    padding: 0.1rem 0.35rem;
+    padding: 2px 7px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 12px;
     cursor: pointer;
-    font-size: 0.75rem;
   }
-  .alt code {
-    font-family: ui-monospace, monospace;
+  .alt:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+  }
+  .form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .form .input {
+    width: 190px;
+  }
+  .form-actions {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .variants {
+    --cols: minmax(130px, 1fr) minmax(160px, 2fr) minmax(80px, 1fr);
+  }
+  .variants .th {
+    grid-template-columns: var(--cols);
+  }
+  .vrow {
+    grid-template-columns: var(--cols);
+    width: 100%;
+    padding: 7px 8px 7px 26px;
+    border: 0;
+    border-radius: var(--radius-sm);
     background: transparent;
-    padding: 0;
     color: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
   }
-  .alt:hover { background: #eef2ff; border-style: solid; }
+  .vrow:hover {
+    background: var(--surface-hover);
+  }
+  .vrow code {
+    color: var(--text);
+  }
+  .vrow code.wire {
+    color: var(--syn-string);
+  }
+
+  @media (max-width: 900px) {
+    .th {
+      display: none;
+    }
+    .cell-main {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      row-gap: 6px;
+      padding-left: 12px;
+    }
+    .c-kinds,
+    .c-wire {
+      font-size: 11.5px;
+    }
+    .editor {
+      padding-left: 12px;
+    }
+    .vrow {
+      padding-left: 12px;
+    }
+  }
+  @media (max-width: 560px) {
+    .cell-main {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      padding-right: 0;
+    }
+    .c-presence {
+      grid-column: 1 / -1;
+    }
+    .c-actions {
+      width: auto;
+      flex-direction: column;
+      align-self: start;
+      padding: 4px 4px 0 0;
+    }
+    .form .input {
+      width: 100%;
+    }
+    .form label {
+      flex: 1 1 100%;
+    }
+    .form-actions {
+      margin-left: 0;
+    }
+  }
 </style>

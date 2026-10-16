@@ -210,7 +210,7 @@ function parseArgs(argv: readonly string[]): Args {
       }
       case "--format": {
         const f = next() as FormatArg | undefined;
-        if (f !== "auto" && !SUPPORTED_FORMATS.includes(f as Format)) {
+        if (f === undefined || (f !== "auto" && !SUPPORTED_FORMATS.includes(f as Format))) {
           throw new Error(`--format must be auto|${SUPPORTED_FORMATS.join("|")} (got '${f}')`);
         }
         args.format = f;
